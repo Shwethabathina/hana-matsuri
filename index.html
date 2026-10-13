@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hana Matsuri — Festival After Dusk</title>
+    <style>
+      :root { color-scheme: dark; }
+      :root {
+        --ink: #fff7ea;
+        --muted: #d9c9b6;
+        --panel: rgba(22, 12, 24, 0.78);
+        --line: rgba(255, 210, 160, 0.28);
+        --accent: #ff7a45;
+        --accent2: #ffd24a;
+        --good: #7cf29a;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0710; color: var(--ink); font-family: "Segoe UI", "Yu Gothic UI", "Hiragino Sans", system-ui, sans-serif; }
+      canvas#c { display: block; width: 100vw; height: 100vh; }
+      body.aiming canvas#c { cursor: crosshair; }
+      .hud { position: fixed; pointer-events: none; z-index: 5; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+
+      #topleft { top: 14px; left: 14px; padding: 12px 14px; min-width: 250px; max-width: 290px; }
+      #topleft h1 { margin: 0 0 2px; font-size: 17px; letter-spacing: 0.5px; }
+      #topleft .jp { color: var(--accent2); font-size: 12px; margin-bottom: 8px; }
+      #clock { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+      #objectives { list-style: none; padding: 0; margin: 8px 0 0; font-size: 13px; line-height: 1.55; }
+      #objectives li.done { color: var(--good); }
+      #objectives li .p { color: var(--muted); font-size: 11px; }
+      #patterns { font-size: 11.5px; color: var(--muted); margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
+
+      #controls { top: 14px; right: 14px; padding: 10px; display: flex; flex-direction: column; gap: 8px; align-items: stretch; pointer-events: auto; width: 214px; }
+      #minimap { width: 194px; height: 194px; border-radius: 8px; display: block; }
+      #controls button, .btn { pointer-events: auto; cursor: pointer; border: 1px solid var(--line); background: linear-gradient(180deg, #ff8a4a, #d9481f); color: #fff; font-weight: 700; padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+      #controls button.ghost { background: rgba(255,255,255,0.08); font-weight: 600; }
+      #controls .row { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+      #controls input[type=range] { flex: 1; accent-color: var(--accent); }
+
+      #prompt { left: 50%; bottom: 90px; transform: translateX(-50%); padding: 10px 16px; font-size: 15px; display: none; }
+      #prompt kbd, .key { display: inline-block; background: #fff; color: #222; border-radius: 5px; padding: 1px 7px; font-weight: 800; margin-right: 6px; font-family: inherit; }
+      #quest { left: 50%; top: 14px; transform: translateX(-50%); padding: 8px 14px; font-size: 14px; display: none; }
+      #gamehud { left: 50%; top: 14px; transform: translateX(-50%); padding: 10px 16px; font-size: 13px; text-align: center; display: none; max-width: min(940px, 96vw); }
+      #gamehud .gh-title { font-weight: 800; font-size: 16px; color: var(--accent2); margin-bottom: 4px; }
+      #gamehud .bar { height: 10px; background: rgba(255,255,255,0.15); border-radius: 6px; overflow: hidden; margin: 6px auto; width: 260px; }
+      #gamehud .bar span { display: block; height: 100%; width: 100%; background: var(--good); transition: width 0.1s; }
+      #gamehud .gf-dev { margin-top: 6px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+      #gamehud canvas { width: min(900px, 92vw); height: auto; display: block; margin: 6px auto; }
+      #toasts { left: 50%; bottom: 140px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; }
+      .toast { padding: 8px 14px; font-size: 14px; animation: toast 3.2s forwards; }
+      @keyframes toast { 0% { opacity: 0; transform: translateY(10px); } 8% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
+      #hint { left: 14px; bottom: 14px; padding: 8px 12px; font-size: 12px; color: var(--muted); max-width: 520px; }
+      #credit { right: 14px; bottom: 10px; font-size: 10.5px; color: rgba(255,255,255,0.55); max-width: 420px; text-align: right; }
+      #credit a { color: inherit; }
+      #fps { right: 240px; top: 14px; font: 12px monospace; color: #9fe; display: none; }
+
+      #flash { position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: 0; background: radial-gradient(circle, rgba(255,255,255,0.9), rgba(160,0,0,0.85)); }
+      #flash.on { animation: flash 0.9s ease-out; }
+      @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+
+      .overlay { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 30%, rgba(80,30,60,0.55), rgba(8,4,14,0.92)); }
+      .overlay.hidden { display: none; }
+      .modal { width: min(560px, 92vw); padding: 24px 26px; }
+      .modal h2 { margin: 0 0 8px; }
+      .modal p { line-height: 1.5; margin: 8px 0; }
+      .muted { color: var(--muted); font-size: 13px; }
+      #start .modal { width: min(680px, 94vw); text-align: center; }
+      #start h1 { font-size: 34px; margin: 0; letter-spacing: 1px; }
+      #start .jp { color: var(--accent2); font-size: 18px; margin: 4px 0 14px; }
+      #start .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px 16px; text-align: left; font-size: 13px; margin: 14px 0; }
+      #progress { height: 8px; background: rgba(255,255,255,0.12); border-radius: 6px; overflow: hidden; margin: 14px 0 6px; }
+      #progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.2s; }
+      #loadtext { font-size: 12px; color: var(--muted); min-height: 16px; }
+      #enter { font-size: 17px; padding: 12px 26px; margin-top: 12px; }
+      #enter:disabled { opacity: 0.45; cursor: wait; }
+      .pillars { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
+      .pillars span { font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; color: var(--muted); }
+      .fortune { font-size: 64px; text-align: center; margin: 6px 0; color: var(--accent2); font-family: "Yu Mincho", serif; }
+      @media (max-width: 760px) {
+        #controls { width: 150px; }
+        #minimap { width: 130px; height: 130px; }
+        #topleft { max-width: 200px; min-width: 0; }
+        #hint { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+
+    <div id="topleft" class="hud card">
+      <h1>Hana Matsuri</h1>
+      <div class="jp">花祭り · Festival After Dusk</div>
+      <div id="clock"><span id="clocktext">16:30 · Afternoon</span><span id="coins">¥3000</span></div>
+      <ul id="objectives"></ul>
+      <div id="patterns"></div>
+    </div>
+
+    <div id="controls" class="hud card">
+      <canvas id="minimap" width="388" height="388"></canvas>
+      <div class="row">🌇<input id="tod" type="range" min="0" max="1000" value="0" />🌙</div>
+      <div class="row"><button id="btn-auto" class="ghost" style="flex:1">⏵ Auto time: on</button></div>
+      <button id="btn-fw">🎆 Launch Fireworks (F)</button>
+      <div class="row">
+        <button id="btn-debug" class="ghost" style="flex:1">AI debug (N)</button>
+        <button id="btn-quality" class="ghost" style="flex:1">High (G)</button>
+      </div>
+    </div>
+
+    <div id="quest" class="hud card"></div>
+    <div id="gamehud" class="hud card"></div>
+    <div id="prompt" class="hud card"></div>
+    <div id="toasts" class="hud"></div>
+    <div id="hint" class="hud card">
+      <b>WASD</b> move · <b>Shift</b> run · <b>Mouse</b>/<b>Arrows</b> look (click to lock) · <b>E</b> interact ·
+      <b>T</b> day→dusk→night · <b>F</b> fireworks · <b>N</b> AI/nav debug · <b>H</b> help
+    </div>
+    <div id="credit" class="hud">
+      Festival street: <a href="https://sketchfab.com/3d-models/summer-festival-of-japan-yataimura-f68b39782b0e45a18c8d4f6c45831576" target="_blank">"Summer festival of Japan 'Yataimura'"</a>
+      by <a href="https://sketchfab.com/seirogan" target="_blank">seirogan</a>, CC-BY-4.0 ·
+      Goldfish: <a href="https://sketchfab.com/3d-models/goldfish-variety-3-851c92634c014949ae78c4b52807584f" target="_blank">"Goldfish_Variety 3"</a> by <a href="https://sketchfab.com/picasty" target="_blank">Picasty</a>, CC-BY-4.0
+    </div>
+    <div id="fps" class="hud"></div>
+    <div id="flash"></div>
+
+    <div id="start" class="overlay">
+      <div class="modal card">
+        <h1>Hana Matsuri</h1>
+        <div class="jp">花祭り — Festival After Dusk</div>
+        <p class="muted">CS549 · AI for Visual Computing · interactive prototype</p>
+        <div class="grid">
+          <div>🚶 <b>WASD</b> walk, <b>Shift</b> run</div>
+          <div>🖱️ <b>Mouse</b> / <b>Arrow keys</b> look</div>
+          <div>✋ <b>E</b> interact with stalls & games</div>
+          <div>🌙 <b>T</b> day → dusk → night</div>
+          <div>🎆 <b>F</b> launch fireworks</div>
+          <div>🧠 <b>N</b> show NPC behaviour trees & nav grid</div>
+          <div>🎮 <b>Esc</b> leave a minigame</div>
+          <div>⚙️ <b>G</b> toggle graphics quality</div>
+        </div>
+        <p class="muted">Play: 🐟 Goldfish scooping · 🎯 Shooting gallery · 🥁 Taiko rhythm · 👻 Kimodameshi · 🙏 Shrine & omikuji · 🍢 Food stalls — then watch the finale.</p>
+        <div id="progress"><span></span></div>
+        <div id="loadtext">Loading festival…</div>
+        <button id="enter" class="btn" disabled>Enter the festival</button>
+        <div class="pillars"><span>Rendering</span><span>Animation</span><span>Physics</span><span>Collision</span><span>Pathfinding</span><span>NPC Behaviour Trees</span></div>
+      </div>
+    </div>
+
+    <div id="panel" class="overlay hidden">
+      <div class="modal card">
+        <div id="panel-body"></div>
+        <button id="panel-btn" class="btn">Continue</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

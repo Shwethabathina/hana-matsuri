@@ -1,0 +1,10 @@
+node_modules/
+dist/
+temp/
+hana-matsuri/
+hana-matsuri-site/
+.vercel/
+# raw 97 MB source model; the app uses the compressed copy in public/models/festival
+public/models/yataimura/scene.bin
+public/models/yataimura/scene.gltf
+public/models/yataimura/textures/
