@@ -13,6 +13,7 @@ import { Shateki } from './games/shateki.js';
 import { Taiko } from './games/taiko.js';
 import { Kimodameshi } from './games/kimodameshi.js';
 import { buildBooth } from './booth.js';
+import { buildStallGoods } from './stallgoods.js';
 import { createUI } from './ui.js';
 import { G } from './state.js';
 import { initAudio, setAmbience, sfx } from './audio.js';
@@ -333,6 +334,8 @@ async function boot() {
     ui.progress(1, '⚠️ Could not load the festival street model — continuing with the procedural world.');
   }
   ui.progress(1, 'Building games, navigation grid and NPCs…');
+  const goods = buildStallGoods(world);
+  console.info(`Stall goods: ${goods.items} items on ${goods.spots} counters`);
   await new Promise((r) => setTimeout(r, 30));
 
   games.goldfish = new Goldfish(ctx);

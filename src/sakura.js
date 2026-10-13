@@ -39,6 +39,7 @@ export function buildSakuraGrove(world, spots) {
   const q = new THREE.Quaternion();
   const e = new THREE.Euler();
   const pinks = ['#ffc0d4', '#ffb0c8', '#ff9fbf', '#ffd3e2', '#f7a6c4', '#ffe1ea'];
+  const base = [];
   let k = 0;
   spots.forEach(([x, z, y = 0, s = 1], i) => {
     q.setFromEuler(e.set(0, rand(0, 6.28), 0));
@@ -51,7 +52,9 @@ export function buildSakuraGrove(world, spots) {
       const h = 3.6 + rand(-0.4, 1.4) - (r / 2.6) * 0.9;
       const bs = rand(0.95, 1.55) * s;
       q.setFromEuler(e.set(rand(0, 3), rand(0, 6), rand(0, 3)));
-      m.compose(new THREE.Vector3(x + Math.cos(a) * r * s, y + h * s, z + Math.sin(a) * r * s), q, new THREE.Vector3(bs, bs, bs));
+      const p = new THREE.Vector3(x + Math.cos(a) * r * s, y + h * s, z + Math.sin(a) * r * s);
+      m.compose(p, q, new THREE.Vector3(bs, bs, bs));
+      base.push({ p, q: q.clone(), s: bs, lever: (h * s) / 4, phase: i * 1.7 + b * 0.35 });
       blossoms.setMatrixAt(k, m);
       blossoms.setColorAt(k, new THREE.Color(pinks[(i + b) % pinks.length]));
       k++;
@@ -62,5 +65,28 @@ export function buildSakuraGrove(world, spots) {
   blossoms.castShadow = true;
   blossoms.receiveShadow = true;
   world.scene.add(trunks, blossoms);
-  return { trunks, blossoms };
+
+  // Wind sway: each blossom cluster swings around its rest position, more for higher clusters
+  // and in gusts, with a per-tree phase so the grove does not move in lockstep.
+  const pos = new THREE.Vector3();
+  const sc = new THREE.Vector3();
+  const qq = new THREE.Quaternion();
+  const tilt = new THREE.Quaternion();
+  const axis = new THREE.Vector3();
+  const update = (t, wind) => {
+    const amp = 0.05 + wind * 0.16;
+    for (let i = 0; i < base.length; i++) {
+      const b = base[i];
+      const sway = Math.sin(t * 1.3 + b.phase) + 0.35 * Math.sin(t * 3.1 + b.phase * 2.3);
+      const ox = sway * amp * b.lever + wind * 0.06 * b.lever;
+      const oz = Math.cos(t * 1.05 + b.phase) * amp * 0.6 * b.lever;
+      pos.set(b.p.x + ox, b.p.y - Math.abs(ox) * 0.15, b.p.z + oz);
+      tilt.setFromAxisAngle(axis.set(oz, 0, -ox).normalize(), Math.hypot(ox, oz) * 0.6);
+      qq.copy(tilt).multiply(b.q);
+      m.compose(pos, qq, sc.set(b.s, b.s, b.s));
+      blossoms.setMatrixAt(i, m);
+    }
+    blossoms.instanceMatrix.needsUpdate = true;
+  };
+  return { trunks, blossoms, update };
 }

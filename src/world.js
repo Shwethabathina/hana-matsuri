@@ -29,6 +29,7 @@ export class World {
     this.moonDir = new THREE.Vector3(0.45, 0.72, -0.52).normalize();
     this.flash = null; // fireworks light injected later
     this.cb = {}; // callbacks wired by main (pray, omikuji, fireworks)
+    this.swayGroups = [];
 
     this.setupEnvironment();
     this.buildGround();
@@ -41,7 +42,7 @@ export class World {
     this.buildTrees();
     this.buildPetals();
     // Cherry-blossom grove framing the plaza, shrine and street (inspired by the concept art).
-    buildSakuraGrove(this, [
+    this.sakura = buildSakuraGrove(this, [
       [-12, -15], [-6, -15.5], [0, -15.5], [6, -15], [-12, 14.5], [-6, 15], [0, 15], [6, 14.5],
       [13, -9], [13, 9.5], [19.5, 11.5], [27, 11.5], [36, 10.5], [42, 11], [48, 11],
       [33, -8.5], [37.5, -7.5], [55, -9.5], [55, 9.5], [44.5, -9], [44.5, 9],
@@ -477,6 +478,7 @@ export class World {
       t.traverse((o) => o.isMesh && (o.castShadow = true));
       this.scene.add(t);
       this.colliders.addCircle(x, z, 0.4, 'sakura');
+      this.swayGroups.push(t);
     }
   }
 
@@ -648,11 +650,11 @@ export class World {
 
   // Falling sakura petals near the shrine and viewing area.
   buildPetals() {
-    const n = 500;
+    const n = 1100;
     const pos = new Float32Array(n * 3);
     const seed = new Float32Array(n);
     for (let i = 0; i < n; i++) {
-      pos.set([rand(30, 56), rand(0, 7), rand(-9, 12)], i * 3);
+      pos.set([rand(-12, 56), rand(0, 7), rand(-14, 14)], i * 3);
       seed[i] = Math.random() * 10;
     }
     const geo = new THREE.BufferGeometry();
@@ -672,7 +674,7 @@ export class World {
       const z = a.getZ(i) + dt * Math.cos(t * 0.9 + seed[i]) * 0.4;
       if (y < 0) {
         y = 7;
-        x = rand(30, 56);
+        x = rand(-12, 56);
       }
       a.setXYZ(i, x, y, z);
     }
@@ -747,6 +749,8 @@ export class World {
 
     this.updateLanterns(t);
     this.updatePetals(dt, t);
+    this.sakura?.update(t, this.wind);
+    for (const g of this.swayGroups) g.rotation.z = Math.sin(t * 1.2 + g.position.x) * 0.012 * (1 + this.wind);
   }
 
   clockLabel() {

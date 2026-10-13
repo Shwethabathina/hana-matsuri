@@ -3,6 +3,7 @@ import { G } from './state.js';
 import { L, STALLS, stallFront, stallOwnerPos } from './layout.js';
 import { angleDamp, canvasTexture, damp, pick, rand, textSprite } from './util.js';
 import { sfx } from './audio.js';
+import { addPets } from './pets.js';
 
 // =====================================================================
 // Minimal behaviour-tree runtime
@@ -663,6 +664,7 @@ export class NPCSystem {
     for (const s of spawnSpots) this.agents.push(new Visitor(this, s));
     this.owners = STALLS.map((s) => new Owner(this, s));
     this.drummer = new Drummer(this, new THREE.Vector3(L.taiko.x, 1.05, L.taiko.z - 1.3));
+    this.pets = addPets(this);
     this.pathLines = new THREE.Group();
     scene.add(this.pathLines);
   }
@@ -680,6 +682,7 @@ export class NPCSystem {
     }
     G.events.length = 0;
     for (const a of this.agents) a.update(dt, t);
+    for (const p of this.pets) p.update(dt, t);
     for (const o of this.owners) o.update(dt, t);
     this.drummer.update(dt, t);
 
