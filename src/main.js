@@ -25,7 +25,9 @@ const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 let quality = 'high';
 // Render resolution adapts to frame rate (see frame()); start near native.
-let maxRatio = Math.min(devicePixelRatio, 1);
+let maxRatio = Math.min(devicePixelRatio, 1.5);
+// Never render below the screen's native resolution: that is what made the image look jagged and blurry.
+const minRatio = () => Math.min(1, maxRatio);
 let pixelRatio = maxRatio;
 renderer.setPixelRatio(pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
@@ -39,7 +41,8 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 5000);
 scene.add(camera);
 
-const composer = new EffectComposer(renderer);
+// 4x MSAA on the post-processing target gives smooth edges (the canvas' own antialias does not apply here).
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.55, 0.9);
 // Bloom runs at half resolution: it is a blur, so the lost detail is invisible and it costs 4x less.
@@ -210,7 +213,7 @@ function toggleQuality() {
   const hi = quality === 'high';
   world.sun.castShadow = hi;
   bloomAllowed = hi;
-  maxRatio = hi ? Math.min(devicePixelRatio, 1) : 0.8;
+  maxRatio = hi ? Math.min(devicePixelRatio, 1.5) : 0.85;
   pixelRatio = maxRatio;
   renderer.setPixelRatio(pixelRatio);
   resize();
@@ -479,8 +482,8 @@ function frame() {
     ui.toast('🏮 You reached the game plaza! Booths ahead, shrine to the east.');
   }
 
-  // Bloom only after sunset: in daylight it smears the bright sky into a white haze.
-  bloom.strength = 0.55 * world.glow * world.glow;
+  // A gentle bloom by day gives the soft, warm look of the original build; capped at night so lanterns do not wash out.
+  bloom.strength = lerp(0.2, 0.55, world.glow);
   bloom.enabled = bloomAllowed && bloom.strength > 0.02; // skip the bloom passes entirely in daylight
   ambT -= dt;
   if (ambT <= 0) {
@@ -512,7 +515,7 @@ function frame() {
     perfT = 0;
     perfN = 0;
     let next = pixelRatio;
-    if (fps < 45 && pixelRatio > 0.6) next = Math.max(0.6, pixelRatio - 0.15);
+    if (fps < 45 && pixelRatio > minRatio()) next = Math.max(minRatio(), pixelRatio - 0.15);
     else if (fps > 57 && pixelRatio < maxRatio) next = Math.min(maxRatio, pixelRatio + 0.1);
     if (next !== pixelRatio) {
       pixelRatio = next;
