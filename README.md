@@ -37,6 +37,14 @@ street from afternoon to night, plays festival games, and ends with a particle f
 
 The HUD shows live FPS, fish count, water grid size and water simulation time.
 
+## Festival world (beyond the MVP)
+
+- First-person exploration of a festival street (Sketchfab model, simplified from 804k to 188k triangles), game plaza, shrine, haunted forest path and fireworks viewing area.
+- Afternoon → dusk → night lighting (sky, sun/moon, fog, emissive lanterns, bloom) with a pool of the 4 nearest lantern lights.
+- NPC visitors with behaviour trees and A* grid navigation; stall owners with a state machine; visitors walking leashed dogs.
+- Food and goods on every stall counter; cherry-blossom grove and forest (instanced CC-BY models) with vertex-shader wind sway.
+- Other activities (prototypes for the final): shooting gallery, taiko rhythm game, kimodameshi, shrine prayer, omikuji, particle fireworks finale.
+
 ## Festival controls
 
 WASD move · Shift run · mouse (click to lock) or arrow keys look · E interact · T afternoon → dusk → night ·
