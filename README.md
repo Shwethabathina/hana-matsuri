@@ -80,4 +80,5 @@ public/models/          compressed glTF assets
   Compressed with gltf-transform for the web.
 - Goldfish: "Goldfish_Variety 3" by Picasty (Sketchfab), CC-BY-4.0.
 - Cherry trees: "Sakura Tree 01 - Low Poly Model" by Jogoss (Sketchfab), CC-BY-4.0.
+- Forest trees: "a forest (3) with a road at night for game" by dasy444 (Sketchfab), CC-BY-4.0.
 - Libraries: three.js, Vite.

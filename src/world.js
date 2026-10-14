@@ -5,6 +5,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Colliders } from './collision.js';
 import { buildSakuraGrove } from './sakura.js';
+import { buildForest } from './forest.js';
 import { L, KIMO_PATH, MODEL_SCALE, MODEL_URL, WORLD_BOUNDS } from './layout.js';
 import { canvasTexture, clamp, damp, glowTexture, keyColor, keyLerp, lerp, rand, signTexture, smoothstep } from './util.js';
 
@@ -594,8 +595,8 @@ export class World {
       }
     }
     // Background woodland ringing the festival, leaving the southern sky open for fireworks.
-    for (let x = -70; x < 110; x += 6) {
-      for (let z = -95; z < 110; z += 6) {
+    for (let x = -70; x < 110; x += 7.5) {
+      for (let z = -95; z < 110; z += 7.5) {
         const px = x + rand(-2.5, 2.5);
         const pz = z + rand(-2.5, 2.5);
         if (px > -15 && px < 60 && pz > -17 && pz < 16) continue;
@@ -608,24 +609,25 @@ export class World {
     // North strip between the street model and the forest
     for (let x = 12; x < 17; x += 2.4) for (let z = -13; z > -30; z -= 2.4) spots.push([x + rand(-0.6, 0.6), z, rand(0.9, 1.2), true]);
 
-    const trunks = new THREE.InstancedMesh(trunkGeo, std('#4a3426', { roughness: 1 }), spots.length);
-    const leaves = new THREE.InstancedMesh(leafGeo, std('#2d4a2b', { roughness: 0.95, flatShading: true }), spots.length);
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    spots.forEach(([x, z, s, collide], i) => {
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * 6.28);
-      m.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(s, s * rand(0.9, 1.2), s));
-      trunks.setMatrixAt(i, m);
-      leaves.setMatrixAt(i, m);
-      const c = new THREE.Color().setHSL(rand(0.27, 0.34), rand(0.3, 0.45), rand(0.16, 0.24));
-      leaves.setColorAt(i, c);
-      if (collide) this.colliders.addCircle(x, z, 0.35 * s, 'tree');
+    for (const [x, z, s, collide] of spots) if (collide) this.colliders.addCircle(x, z, 0.35 * s, 'tree');
+    // Photo-card trees from the forest model; simple procedural cedars only if it fails to load.
+    this.forestReady = buildForest(this, spots).catch((err) => {
+      console.warn('Forest model failed to load, using simple trees', err);
+      const trunks = new THREE.InstancedMesh(trunkGeo, std('#4a3426', { roughness: 1 }), spots.length);
+      const leaves = new THREE.InstancedMesh(leafGeo, std('#2d4a2b', { roughness: 0.95, flatShading: true }), spots.length);
+      const m = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      spots.forEach(([x, z, s], i) => {
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * 6.28);
+        m.compose(new THREE.Vector3(x, 0, z), q, new THREE.Vector3(s, s * rand(0.9, 1.2), s));
+        trunks.setMatrixAt(i, m);
+        leaves.setMatrixAt(i, m);
+      });
+      for (const im of [trunks, leaves]) {
+        im.castShadow = true;
+        this.scene.add(im);
+      }
     });
-    for (const im of [trunks, leaves]) {
-      im.castShadow = true;
-      im.receiveShadow = true;
-      this.scene.add(im);
-    }
   }
 
   // Falling sakura petals near the shrine and viewing area.

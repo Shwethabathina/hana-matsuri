@@ -12,7 +12,7 @@ const TREE_HEIGHT = 6.2; // metres for scale 1
 // its world position so the grove does not move in lockstep.
 const wind = { uTime: { value: 0 }, uAmp: { value: 0.1 }, uGust: { value: 0 } };
 
-function addWind(material, flutter) {
+export function addWind(material, flutter, height = TREE_HEIGHT) {
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, wind);
     shader.vertexShader = shader.vertexShader
@@ -32,7 +32,7 @@ function addWind(material, flutter) {
             ip = instanceMatrix[3].xyz;
           #endif
           float ph = ip.x * 0.37 + ip.z * 0.21;
-          float h = clamp((transformed.y - 1.2) / ${(TREE_HEIGHT - 1.2).toFixed(1)}, 0.0, 1.2);
+          float h = clamp((transformed.y - ${(height * 0.2).toFixed(2)}) / ${(height * 0.8).toFixed(2)}, 0.0, 1.2);
           h *= h;
           float s = sin(uTime * 1.3 + ph) + 0.35 * sin(uTime * 3.1 + ph * 2.3);
           transformed.x += (s * uAmp + uGust * 0.35) * h;
@@ -42,7 +42,7 @@ function addWind(material, flutter) {
         }`,
       );
   };
-  material.customProgramCacheKey = () => (flutter ? 'sakura-leaf' : 'sakura-bark');
+  material.customProgramCacheKey = () => `wind-${flutter ? 'leaf' : 'bark'}-${height}`;
 }
 
 // Bake the glTF into Y-up world-space geometry with the trunk base at the origin.
