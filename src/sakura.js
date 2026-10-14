@@ -46,6 +46,9 @@ export function addWind(material, flutter, height = TREE_HEIGHT) {
 }
 
 // Bake the glTF into Y-up world-space geometry with the trunk base at the origin.
+let treePromise = null;
+const loadTreeOnce = () => (treePromise ??= loadTree());
+
 async function loadTree() {
   const gltf = await new GLTFLoader().loadAsync(SAKURA_URL);
   gltf.scene.updateMatrixWorld(true);
@@ -78,11 +81,11 @@ async function loadTree() {
 }
 
 // spots: [x, z, baseY, scale]
-export function buildSakuraGrove(world, spots) {
+export function buildSakuraGrove(world, spots, { shadows = true, scale = 1.35 } = {}) {
   for (const [x, z, , s = 1] of spots) world.colliders.addCircle(x, z, 0.35 * s, 'sakura');
   const state = { meshes: [] };
 
-  loadTree()
+  loadTreeOnce()
     .then(({ bark, leaf, barkMat, leafMat }) => {
       const bm = barkMat.clone();
       bm.roughness = 0.95;
@@ -90,7 +93,7 @@ export function buildSakuraGrove(world, spots) {
       const lm = leafMat.clone();
       // The blossom cards were exported as BLEND; alpha-test avoids sorting artefacts.
       lm.transparent = false;
-      lm.alphaTest = 0.45;
+      lm.alphaTest = 0.28;
       lm.side = THREE.DoubleSide;
       lm.emissive = new THREE.Color('#ff86b0');
       lm.emissiveMap = lm.map;
@@ -104,13 +107,13 @@ export function buildSakuraGrove(world, spots) {
       const q = new THREE.Quaternion();
       spots.forEach(([x, z, y = 0, sc = 1], i) => {
         q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rand(0, Math.PI * 2));
-        const k = sc * rand(0.9, 1.1);
+        const k = sc * scale * rand(0.9, 1.12);
         m.compose(new THREE.Vector3(x, y - 0.05, z), q, new THREE.Vector3(k, k * rand(0.92, 1.08), k));
         trunks.setMatrixAt(i, m);
         crowns.setMatrixAt(i, m);
       });
       for (const im of [trunks, crowns]) {
-        im.castShadow = true;
+        im.castShadow = shadows;
         im.receiveShadow = true;
         im.frustumCulled = false;
         world.scene.add(im);

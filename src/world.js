@@ -142,6 +142,16 @@ export class World {
       if (/^material_0\.00[1-5]$/.test(m.name)) this.registerGlow(m, 0.8, 2.4); // stall signs/boards
       if (m.name === 'Material.004' || m.name === 'Material.002') this.registerGlow(m, 0.3, 2.8); // chouchin lanterns
       if (m.name === 'denkyu') this.registerGlow(m, 0.35, 3.2); // light bulbs
+      if (m.name === 'Material_9.001' && !m.userData.blossom) {
+        // The street model's big canopy trees become cherry blossoms to match the festival.
+        m.userData.blossom = true;
+        m.map = null;
+        m.color.set('#f7b6cb');
+        m.emissive = new THREE.Color('#ff8fb6');
+        m.roughness = 0.85;
+        m.needsUpdate = true;
+        this.registerGlow(m, 0.04, 0.3);
+      }
     });
     this.scene.add(root);
     this.model = root;
@@ -601,6 +611,7 @@ export class World {
         const pz = z + rand(-2.5, 2.5);
         if (px > -15 && px < 60 && pz > -17 && pz < 16) continue;
         if (px > 12 && px < 62 && pz > -62 && pz <= -17) continue;
+        if (px > -42 && px < 88 && pz > -42 && pz < 46) continue; // sakura ring band
         if (px > 0 && px < 80 && pz >= 16 && pz < 40) continue;
         if (px > 20 && px < 60 && pz >= 40 && pz < 95) continue;
         spots.push([px, pz, rand(0.9, 1.6), false]);
@@ -610,6 +621,19 @@ export class World {
     for (let x = 12; x < 17; x += 2.4) for (let z = -13; z > -30; z -= 2.4) spots.push([x + rand(-0.6, 0.6), z, rand(0.9, 1.2), true]);
 
     for (const [x, z, s, collide] of spots) if (collide) this.colliders.addCircle(x, z, 0.35 * s, 'tree');
+    // Cherry blossoms ring the festival so they, not the conifers, frame every view.
+    const ring = [];
+    for (let x = -38; x < 84; x += 8) {
+      for (let z = -38; z < 44; z += 8) {
+        const px = x + rand(-2.5, 2.5);
+        const pz = z + rand(-2.5, 2.5);
+        if (px > -16 && px < 60 && pz > -18 && pz < 17) continue; // festival + plaza
+        if (px > 14 && px < 62 && pz <= -18) continue; // kimodameshi forest
+        if (px > 14 && px < 62 && pz >= 17 && pz < 34) continue; // keep the fireworks view open
+        ring.push([px, pz, 0, rand(1, 1.35)]);
+      }
+    }
+    this.sakuraRing = buildSakuraGrove(this, ring, { shadows: false });
     // Photo-card trees from the forest model; simple procedural cedars only if it fails to load.
     this.forestReady = buildForest(this, spots).catch((err) => {
       console.warn('Forest model failed to load, using simple trees', err);
