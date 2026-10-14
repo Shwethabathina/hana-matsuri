@@ -46,6 +46,7 @@ export class World {
       [-12, -15], [-6, -15.5], [0, -15.5], [6, -15], [-12, 14.5], [-6, 15], [0, 15], [6, 14.5],
       [13, -9], [13, 9.5], [19.5, 11.5], [27, 11.5], [36, 10.5], [42, 11], [48, 11],
       [33, -8.5], [37.5, -7.5], [55, -9.5], [55, 9.5], [44.5, -9], [44.5, 9],
+      [40, -7.5, 0, 0.9], [40, 7.5, 0, 0.9], [53, -7, 0, 1.1], [53, 7, 0, 1.1], [35.5, -6.5, 0, 0.85],
     ]);
   }
 
@@ -459,27 +460,6 @@ export class World {
       action: () => this.cb.pray?.(),
     });
 
-    // Sakura accents
-    const blossom = std('#f5b8c9', { roughness: 0.9, emissive: '#f59ab5', emissiveIntensity: 0.05 });
-    const trunk = std('#4d3226');
-    const blob = new THREE.IcosahedronGeometry(1, 1);
-    for (const [x, z] of [[40, -7.5], [40, 7.5], [53, -7], [53, 7], [35.5, -6.5]]) {
-      const t = new THREE.Group();
-      const tr = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 3, 7), trunk);
-      tr.position.y = 1.5;
-      t.add(tr);
-      for (let i = 0; i < 6; i++) {
-        const b = new THREE.Mesh(blob, blossom);
-        b.position.set(rand(-1.3, 1.3), rand(3, 4.4), rand(-1.3, 1.3));
-        b.scale.setScalar(rand(0.9, 1.5));
-        t.add(b);
-      }
-      t.position.set(x, 0, z);
-      t.traverse((o) => o.isMesh && (o.castShadow = true));
-      this.scene.add(t);
-      this.colliders.addCircle(x, z, 0.4, 'sakura');
-      this.swayGroups.push(t);
-    }
   }
 
   buildStoneLanterns() {

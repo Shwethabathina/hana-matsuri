@@ -79,4 +79,5 @@ public/models/          compressed glTF assets
 - Festival street: "Summer festival of Japan 'Yataimura'" by seirogan (Sketchfab), CC-BY-4.0.
   Compressed with gltf-transform for the web.
 - Goldfish: "Goldfish_Variety 3" by Picasty (Sketchfab), CC-BY-4.0.
+- Cherry trees: "Sakura Tree 01 - Low Poly Model" by Jogoss (Sketchfab), CC-BY-4.0.
 - Libraries: three.js, Vite.
