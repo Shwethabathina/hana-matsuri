@@ -712,7 +712,8 @@ export class World {
     u.rayleigh.value = keyLerp([[0, 1.1], [0.6, 2.6], [1, 0.4]], tod);
     u.turbidity.value = keyLerp([[0, 3], [0.6, 8], [1, 1.5]], tod);
 
-    const sunI = keyLerp([[0, 2.7], [0.5, 2.3], [0.64, 1.0], [0.72, 0]], tod);
+    // Slightly softer than the Assignment 2 sun: the removed foliage canopy used to shade the stalls.
+    const sunI = keyLerp([[0, 2.15], [0.5, 1.95], [0.64, 0.9], [0.72, 0]], tod);
     const moonI = keyLerp([[0.72, 0], [0.9, 0.45], [1, 0.5]], tod);
     const sun = this.sun;
     const snap = (v) => Math.round(v / 2) * 2;
@@ -739,7 +740,7 @@ export class World {
     fog.color.lerp(new THREE.Color('#05070d'), F * 0.85);
     fog.density = lerp(keyLerp([[0, 0.004], [0.7, 0.007], [1, 0.011]], tod), 0.075, F);
 
-    this.renderer.toneMappingExposure = keyLerp([[0, 0.6], [0.6, 0.62], [1, 0.72]], tod);
+    this.renderer.toneMappingExposure = keyLerp([[0, 0.55], [0.6, 0.6], [1, 0.72]], tod);
     this.scene.environmentIntensity = keyLerp([[0, 0.8], [0.6, 0.45], [1, 0.12]], tod) * (1 - 0.8 * F);
 
     const night = smoothstep(0.62, 0.95, tod);

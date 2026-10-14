@@ -45,10 +45,6 @@ scene.add(camera);
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.55, 0.9);
-// Bloom runs at half resolution: it is a blur, so the lost detail is invisible and it costs 4x less.
-const bloomSetSize = bloom.setSize.bind(bloom);
-bloom.setSize = (w, h) => bloomSetSize(Math.round(w / 2), Math.round(h / 2));
-let bloomAllowed = true;
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
@@ -212,7 +208,7 @@ function toggleQuality() {
   quality = quality === 'high' ? 'low' : 'high';
   const hi = quality === 'high';
   world.sun.castShadow = hi;
-  bloomAllowed = hi;
+  bloom.enabled = hi;
   maxRatio = hi ? Math.min(devicePixelRatio, 1.5) : 0.85;
   pixelRatio = maxRatio;
   renderer.setPixelRatio(pixelRatio);
@@ -482,9 +478,7 @@ function frame() {
     ui.toast('🏮 You reached the game plaza! Booths ahead, shrine to the east.');
   }
 
-  // A gentle bloom by day gives the soft, warm look of the original build; capped at night so lanterns do not wash out.
-  bloom.strength = lerp(0.2, 0.55, world.glow);
-  bloom.enabled = bloomAllowed && bloom.strength > 0.02; // skip the bloom passes entirely in daylight
+  bloom.strength = lerp(0.15, 0.55, world.glow);
   ambT -= dt;
   if (ambT <= 0) {
     ambT = 0.5;
