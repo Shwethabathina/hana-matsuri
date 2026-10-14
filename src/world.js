@@ -705,7 +705,7 @@ export class World {
     u.rayleigh.value = keyLerp([[0, 1.1], [0.6, 2.6], [1, 0.4]], tod);
     u.turbidity.value = keyLerp([[0, 3], [0.6, 8], [1, 1.5]], tod);
 
-    const sunI = keyLerp([[0, 2.7], [0.5, 2.3], [0.64, 1.0], [0.72, 0]], tod);
+    const sunI = keyLerp([[0, 2.2], [0.5, 2.0], [0.64, 0.9], [0.72, 0]], tod);
     const moonI = keyLerp([[0.72, 0], [0.9, 0.45], [1, 0.5]], tod);
     const sun = this.sun;
     const snap = (v) => Math.round(v / 2) * 2;
@@ -725,21 +725,21 @@ export class World {
 
     keyColor([[0, '#bcd8ff'], [0.6, '#ffb48a'], [0.8, '#4a4a8a'], [1, '#243060']], tod, this.hemi.color);
     keyColor([[0, '#7a6a52'], [0.6, '#6a4a3a'], [1, '#101020']], tod, this.hemi.groundColor);
-    this.hemi.intensity = keyLerp([[0, 1.1], [0.6, 0.8], [0.85, 0.35], [1, 0.28]], tod) * (1 - 0.75 * F);
+    this.hemi.intensity = keyLerp([[0, 0.7], [0.6, 0.6], [0.85, 0.32], [1, 0.28]], tod) * (1 - 0.75 * F);
 
     const fog = this.scene.fog;
     keyColor([[0, '#cfe0ef'], [0.55, '#f3c29a'], [0.7, '#d9785a'], [0.82, '#3a2e55'], [1, '#0b1030']], tod, fog.color);
     fog.color.lerp(new THREE.Color('#05070d'), F * 0.85);
-    fog.density = lerp(keyLerp([[0, 0.004], [0.7, 0.007], [1, 0.011]], tod), 0.075, F);
+    fog.density = lerp(keyLerp([[0, 0.0022], [0.7, 0.006], [1, 0.011]], tod), 0.075, F);
 
-    this.renderer.toneMappingExposure = keyLerp([[0, 0.6], [0.6, 0.62], [1, 0.72]], tod);
-    this.scene.environmentIntensity = keyLerp([[0, 0.8], [0.6, 0.45], [1, 0.12]], tod) * (1 - 0.8 * F);
+    this.renderer.toneMappingExposure = keyLerp([[0, 0.5], [0.6, 0.56], [1, 0.72]], tod);
+    this.scene.environmentIntensity = keyLerp([[0, 0.5], [0.6, 0.35], [1, 0.12]], tod) * (1 - 0.8 * F);
 
     const night = smoothstep(0.62, 0.95, tod);
     this.night = night;
     const glow = smoothstep(0.4, 0.85, tod);
     this.glow = glow;
-    for (const g of this.glowMats) g.mat.emissiveIntensity = lerp(g.day, g.night * 0.6, glow);
+    for (const g of this.glowMats) g.mat.emissiveIntensity = lerp(g.day * 0.35, g.night * 0.6, glow); // lanterns barely glow in daylight
     for (const L0 of this.lights) {
       const flick = 1 + Math.sin(t * 13 + L0.seed) * L0.flicker * 0.5 + Math.sin(t * 7.3 + L0.seed * 2) * L0.flicker * 0.5;
       L0.light.intensity = L0.base * 0.45 * glow * flick;

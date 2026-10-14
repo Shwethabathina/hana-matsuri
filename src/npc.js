@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { G } from './state.js';
 import { L, STALLS, stallFront, stallOwnerPos } from './layout.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { angleDamp, canvasTexture, damp, pick, rand, textSprite } from './util.js';
 import { sfx } from './audio.js';
 import { addPets } from './pets.js';
@@ -149,18 +150,10 @@ function yukataTexture(base, accent) {
 }
 
 const GEO = {
-  skirt: new THREE.CylinderGeometry(0.17, 0.25, 0.8, 12).translate(0, 0.45, 0),
-  torso: new THREE.CylinderGeometry(0.2, 0.17, 0.55, 12).translate(0, 0.27, 0),
-  obi: new THREE.CylinderGeometry(0.188, 0.188, 0.15, 12).translate(0, 0.06, 0),
-  head: new THREE.SphereGeometry(0.13, 16, 12),
-  hair: new THREE.SphereGeometry(0.138, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.58),
-  bun: new THREE.SphereGeometry(0.07, 10, 8),
-  sleeve: new THREE.CylinderGeometry(0.06, 0.1, 0.5, 8).translate(0, -0.25, 0),
-  hand: new THREE.SphereGeometry(0.045, 8, 6).translate(0, -0.52, 0),
-  foot: new THREE.BoxGeometry(0.09, 0.05, 0.22).translate(0, 0.025, 0),
   stick: new THREE.CylinderGeometry(0.018, 0.018, 0.45, 6).rotateX(Math.PI / 2).translate(0, -0.55, 0.18),
 };
-const SKINS = ['#f1c9a5', '#e0ac85', '#c98e66', '#f5d6bd'];
+const SKINS = ['#f1cba8', '#e6b48f', '#d19c74', '#f6d9c0', '#c98e66'];
+const HAIRS = ['#15110f', '#24180f', '#3a2618', '#1b1714', '#4a3020'];
 const YUKATA = [
   ['#1f3a73', '#ffffff'],
   ['#f2f2f2', '#2c5aa0'],
@@ -170,58 +163,158 @@ const YUKATA = [
   ['#e79a3a', '#7a2a1a'],
   ['#232323', '#e14b4b'],
   ['#7fb3d9', '#ffffff'],
+  ['#f4c6d6', '#c23b6a'],
 ];
-const OBI = ['#d4a02a', '#b3202a', '#f3e5c0', '#2a2a2a', '#e86aa6'];
+const YUKATA_M = [
+  ['#2b2f3a', '#8a94a8'],
+  ['#3a3226', '#c9b48a'],
+  ['#1f3a73', '#9fb4d9'],
+  ['#4a4a4a', '#bdbdbd'],
+  ['#26323a', '#6f8796'],
+];
+const OBI = ['#d4a02a', '#b3202a', '#f3e5c0', '#2a2a2a', '#e86aa6', '#4a7ac8'];
+const KANZASHI = ['#ff6a8a', '#ffd24a', '#ffffff', '#c86aff'];
 
-export function makeCharacter({ yukata = pick(YUKATA), obi = pick(OBI), skin = pick(SKINS), bun = Math.random() < 0.5 } = {}) {
-  const cloth = new THREE.MeshStandardMaterial({ map: yukataTexture(yukata[0], yukata[1]), roughness: 0.85 });
-  const skinM = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.7 });
-  const hairM = new THREE.MeshStandardMaterial({ color: '#15110f', roughness: 0.5 });
-  const obiM = new THREE.MeshStandardMaterial({ color: obi, roughness: 0.6 });
-  const getaM = new THREE.MeshStandardMaterial({ color: '#8a6440' });
-
-  const root = new THREE.Group();
-  const skirt = new THREE.Mesh(GEO.skirt, cloth);
-  const footL = new THREE.Mesh(GEO.foot, getaM);
-  const footR = new THREE.Mesh(GEO.foot, getaM);
-  footL.position.x = 0.08;
-  footR.position.x = -0.08;
-  const upper = new THREE.Group();
-  upper.position.y = 0.85;
-  const torso = new THREE.Mesh(GEO.torso, cloth);
-  const obiMesh = new THREE.Mesh(GEO.obi, obiM);
-  const headG = new THREE.Group();
-  headG.position.y = 0.72;
-  const head = new THREE.Mesh(GEO.head, skinM);
-  const hair = new THREE.Mesh(GEO.hair, hairM);
-  hair.position.set(0, 0.012, -0.012);
-  hair.rotation.x = -0.25;
-  headG.add(head, hair);
-  if (bun) {
-    const b = new THREE.Mesh(GEO.bun, hairM);
-    b.position.set(0, 0.1, -0.1);
-    headG.add(b);
+// One rigidly-skinned part: geometry in bind-pose model space, bound to one bone, with a vertex colour.
+function part(geo, bone, color = '#ffffff', xf = {}) {
+  const g = geo.index ? geo.clone() : geo.clone();
+  const m = new THREE.Matrix4().compose(
+    new THREE.Vector3(...(xf.p || [0, 0, 0])),
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(...(xf.r || [0, 0, 0]))),
+    new THREE.Vector3(...(xf.s || [1, 1, 1])),
+  );
+  g.applyMatrix4(m);
+  for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+  const n = g.attributes.position.count;
+  const c = new THREE.Color(color);
+  const col = new Float32Array(n * 3);
+  const si = new Uint16Array(n * 4);
+  const sw = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    col.set([c.r, c.g, c.b], i * 3);
+    si[i * 4] = bone;
+    sw[i * 4] = 1;
   }
-  const mkArm = (side) => {
-    const a = new THREE.Group();
-    a.position.set(0.22 * side, 0.5, 0);
-    a.add(new THREE.Mesh(GEO.sleeve, cloth), new THREE.Mesh(GEO.hand, skinM));
-    return a;
-  };
-  const armL = mkArm(1);
-  const armR = mkArm(-1);
-  upper.add(torso, obiMesh, headG, armL, armR);
-  root.add(skirt, footL, footR, upper);
-  root.traverse((o) => {
-    if (o.isMesh) o.castShadow = true;
-  });
-  return { root, upper, head: headG, armL, armR, footL, footR, phase: Math.random() * 10, pose: {} };
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+  g.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+  g.clearGroups();
+  return g;
+}
+
+const lathe = (pts, seg = 20) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+const sphere = (r, w = 16, h = 12, ...rest) => new THREE.SphereGeometry(r, w, h, ...rest);
+
+// Bone indices
+const B = { root: 0, upper: 1, head: 2, armL: 3, armR: 4, footL: 5, footR: 6 };
+
+// A yukata-clad visitor built as a single skinned mesh (two draw calls: patterned cloth + plain parts),
+// so a crowd stays cheap while each person still has animated arms, feet, torso and head.
+export function makeCharacter({
+  gender = Math.random() < 0.6 ? 'f' : 'm',
+  yukata = pick(gender === 'f' ? YUKATA : YUKATA_M),
+  obi = pick(OBI),
+  skin = pick(SKINS),
+  hair = pick(HAIRS),
+  bun = gender === 'f',
+  child = false,
+} = {}) {
+  const f = gender === 'f';
+  const W = 0.85; // waist height
+  const SH = W + 0.5; // shoulder pivot height
+  const HD = W + 0.72; // head centre
+  const cloth = [];
+  const plain = [];
+
+  // Lower kimono, flaring slightly at the hips and narrowing at the ankles.
+  cloth.push(part(lathe(f
+    ? [[0, 0.05], [0.145, 0.05], [0.155, 0.2], [0.172, 0.45], [0.182, 0.68], [0.16, W + 0.02], [0, W + 0.02]]
+    : [[0, 0.05], [0.16, 0.05], [0.17, 0.3], [0.182, 0.6], [0.178, W + 0.02], [0, W + 0.02]]), B.root));
+  // Torso: waist -> chest -> sloping shoulders.
+  cloth.push(part(lathe(f
+    ? [[0, 0], [0.155, 0], [0.17, 0.15], [0.185, 0.32], [0.19, 0.44], [0.16, 0.52], [0.07, 0.575], [0, 0.58]]
+    : [[0, 0], [0.165, 0], [0.18, 0.18], [0.2, 0.36], [0.205, 0.46], [0.17, 0.53], [0.07, 0.575], [0, 0.58]]), B.upper, '#ffffff', { p: [0, W, 0] }));
+  // Wide kimono sleeves on each arm.
+  for (const [side, bone] of [[1, B.armL], [-1, B.armR]]) {
+    const x = 0.205 * side;
+    cloth.push(part(new THREE.CylinderGeometry(0.062, 0.085, 0.32, 12), bone, '#ffffff', { p: [x, SH - 0.16, 0] }));
+    cloth.push(part(new THREE.BoxGeometry(0.045, f ? 0.26 : 0.2, 0.19), bone, '#ffffff', { p: [x + 0.012 * side, SH - (f ? 0.29 : 0.26), -0.015] }));
+    // Forearm and hand
+    plain.push(part(new THREE.CylinderGeometry(0.026, 0.032, 0.17, 10), bone, skin, { p: [x, SH - 0.4, 0.01] }));
+    plain.push(part(sphere(0.036, 12, 8), bone, skin, { p: [x, SH - 0.515, 0.012], s: [0.75, 1.15, 0.55] }));
+  }
+  // Obi sash; women get a bow on the back.
+  plain.push(part(new THREE.CylinderGeometry(f ? 0.172 : 0.182, f ? 0.172 : 0.182, f ? 0.16 : 0.07, 20), B.upper, obi, { p: [0, W + (f ? 0.07 : 0.04), 0] }));
+  if (f) {
+    for (const s of [-1, 1]) plain.push(part(sphere(1, 12, 8), B.upper, obi, { p: [0.075 * s, W + 0.1, -0.185], s: [0.085, 0.06, 0.035], r: [0, 0, 0.3 * s] }));
+    plain.push(part(new THREE.BoxGeometry(0.06, 0.08, 0.05), B.upper, obi, { p: [0, W + 0.09, -0.18] }));
+  }
+  // Crossed collar (eri), left over right.
+  const chestZ = (f ? 0.19 : 0.205) + 0.004;
+  // Each side runs from beside the neck down to the centre of the chest, forming a V.
+  for (const s of [-1, 1]) plain.push(part(new THREE.BoxGeometry(0.02, 0.2, 0.01), B.upper, '#f4efe6', { p: [0.04 * s, W + 0.45, chestZ - 0.01], r: [-0.22, 0, -0.4 * s] }));
+  // Neck and head
+  plain.push(part(new THREE.CylinderGeometry(0.042, 0.048, 0.1, 12), B.upper, skin, { p: [0, W + 0.6, 0] }));
+  plain.push(part(sphere(1, 24, 18), B.head, skin, { p: [0, HD, 0.005], s: [0.098, 0.118, 0.106] }));
+  // Face
+  for (const s of [-1, 1]) {
+    plain.push(part(sphere(0.012, 10, 8), B.head, '#1b120e', { p: [0.034 * s, HD + 0.012, 0.105], s: [1.1, 0.75, 0.5] }));
+    plain.push(part(new THREE.BoxGeometry(0.032, 0.006, 0.01), B.head, hair, { p: [0.036 * s, HD + 0.042, 0.101], r: [0, 0, -0.12 * s] }));
+    plain.push(part(sphere(0.022, 10, 8), B.head, skin, { p: [0.097 * s, HD, 0], s: [0.45, 1, 0.75] }));
+  }
+  plain.push(part(sphere(0.014, 10, 8), B.head, skin, { p: [0, HD - 0.012, 0.106], s: [0.7, 1, 0.9] }));
+  plain.push(part(new THREE.BoxGeometry(0.03, 0.006, 0.008), B.head, f ? '#c0605a' : '#a8705f', { p: [0, HD - 0.045, 0.105] }));
+  // Hair
+  if (f) {
+    plain.push(part(sphere(1, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.56), B.head, hair, { p: [0, HD + 0.016, -0.012], s: [0.106, 0.124, 0.116], r: [-0.72, 0, 0] }));
+    if (bun) {
+      plain.push(part(sphere(0.058, 14, 10), B.head, hair, { p: [0, HD + 0.09, -0.085] }));
+      const kc = pick(KANZASHI);
+      for (let i = 0; i < 3; i++) plain.push(part(sphere(0.014, 8, 6), B.head, kc, { p: [0.04 + i * 0.012, HD + 0.11 + i * 0.008, -0.06] }));
+    } else {
+      plain.push(part(new THREE.BoxGeometry(0.19, 0.16, 0.05), B.head, hair, { p: [0, HD - 0.06, -0.09] }));
+    }
+  } else {
+    plain.push(part(sphere(1, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.5), B.head, hair, { p: [0, HD + 0.014, -0.01], s: [0.104, 0.12, 0.112], r: [-0.55, 0, 0] }));
+  }
+  // Geta sandals with tabi-white feet
+  for (const [side, bone] of [[1, B.footL], [-1, B.footR]]) {
+    const x = 0.075 * side;
+    plain.push(part(new THREE.BoxGeometry(0.085, 0.032, 0.21), bone, '#9a7048', { p: [x, 0.016, 0.02] }));
+    plain.push(part(sphere(1, 12, 8), bone, f ? '#f4f1ea' : skin, { p: [x, 0.05, 0.03], s: [0.038, 0.026, 0.085] }));
+  }
+
+  const geo = mergeGeometries([mergeGeometries(cloth), mergeGeometries(plain)], true);
+  const clothMat = new THREE.MeshStandardMaterial({ map: yukataTexture(yukata[0], yukata[1]), roughness: 0.85 });
+  const plainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65 });
+
+  const bones = [0, 1, 2, 3, 4, 5, 6].map(() => new THREE.Bone());
+  const [root, upper, head, armL, armR, footL, footR] = bones;
+  root.add(upper, footL, footR);
+  upper.position.set(0, W, 0);
+  upper.add(head, armL, armR);
+  head.position.set(0, HD - W, 0);
+  armL.position.set(0.205, SH - W, 0);
+  armR.position.set(-0.205, SH - W, 0);
+  footL.position.set(0.075, 0, 0);
+  footR.position.set(-0.075, 0, 0);
+  const mesh = new THREE.SkinnedMesh(geo, [clothMat, plainMat]);
+  mesh.add(root);
+  mesh.updateMatrixWorld(true);
+  mesh.bind(new THREE.Skeleton(bones));
+  mesh.castShadow = true;
+  mesh.frustumCulled = false;
+
+  const holder = new THREE.Group();
+  holder.add(mesh);
+  holder.scale.setScalar((child ? 0.68 : 1) * (f ? rand(0.93, 1.0) : rand(1.0, 1.08)));
+  return { root: holder, upper, head, armL, armR, footL, footR, phase: Math.random() * 10, pose: {} };
 }
 
 // Pose targets are damped so transitions between animations blend smoothly.
 function animate(c, anim, speed, dt, t) {
   const P = {
-    uX: 0, uY: 0.85, hX: 0, hY: 0,
+    uX: 0, uY: 0.85, uRY: 0, hX: 0, hY: 0,
     lX: 0, lZ: 0.08, rX: 0, rZ: -0.08,
     fl: 0, fr: 0, jump: 0,
   };
@@ -233,7 +326,8 @@ function animate(c, anim, speed, dt, t) {
       P.fr = -s * 0.13;
       P.lX = -s * 0.4;
       P.rX = s * 0.4;
-      P.uY = 0.85 + Math.abs(Math.cos(c.phase)) * 0.03;
+      P.uY = 0.85 + Math.abs(Math.cos(c.phase)) * 0.025;
+      P.uRY = Math.sin(c.phase) * 0.09; // shoulders counter-rotate against the stride
       break;
     }
     case 'eat':
@@ -295,6 +389,7 @@ function animate(c, anim, speed, dt, t) {
     return c.pose[key];
   };
   c.upper.rotation.x = d('uX', P.uX, 8);
+  c.upper.rotation.y = d('uRY', P.uRY, 10);
   c.upper.position.y = d('uY', P.uY, 14) + d('jump', P.jump, 20);
   c.head.rotation.x = d('hX', P.hX, 6);
   c.head.rotation.y = d('hY', P.hY, 4);
@@ -331,7 +426,7 @@ function buildPOIs() {
 export class Visitor {
   constructor(sys, pos) {
     this.sys = sys;
-    this.c = makeCharacter();
+    this.c = makeCharacter({ child: Math.random() < 0.15 });
     this.pos = pos.clone();
     this.vel = new THREE.Vector3();
     this.heading = rand(0, 6.28);
@@ -528,7 +623,7 @@ export class Owner {
   constructor(sys, stall) {
     this.sys = sys;
     this.stall = stall;
-    this.c = makeCharacter({ yukata: ['#27324a', '#ffffff'], bun: false });
+    this.c = makeCharacter({ gender: 'm', yukata: ['#27324a', '#ffffff'] });
     // Hachimaki headband
     const band = new THREE.Mesh(new THREE.TorusGeometry(0.135, 0.018, 6, 16), new THREE.MeshStandardMaterial({ color: '#ffffff' }));
     band.rotation.x = Math.PI / 2;
@@ -599,7 +694,7 @@ export class Owner {
 export class Drummer {
   constructor(sys, standPos) {
     this.sys = sys;
-    this.c = makeCharacter({ yukata: ['#f4f0e6', '#b3202a'], obi: '#b3202a', bun: false });
+    this.c = makeCharacter({ gender: 'm', yukata: ['#f4f0e6', '#b3202a'], obi: '#b3202a' });
     const stickM = new THREE.MeshStandardMaterial({ color: '#d9b98a' });
     this.c.armL.add(new THREE.Mesh(GEO.stick, stickM));
     this.c.armR.add(new THREE.Mesh(GEO.stick, stickM));

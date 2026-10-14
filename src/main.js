@@ -477,7 +477,8 @@ function frame() {
     ui.toast('🏮 You reached the game plaza! Booths ahead, shrine to the east.');
   }
 
-  bloom.strength = lerp(0.15, 0.55, world.glow);
+  // Bloom only after sunset: in daylight it smears the bright sky into a white haze.
+  bloom.strength = 0.55 * world.glow * world.glow;
   ambT -= dt;
   if (ambT <= 0) {
     ambT = 0.5;

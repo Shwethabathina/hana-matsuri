@@ -561,8 +561,18 @@ export class Goldfish {
 
   // Runs every frame so the fish swim even when nobody is playing.
   update(dt, t) {
-    const near = G.player.pos.distanceTo(TUB) < 25 || this.active;
+    const near = G.player.pos.distanceTo(TUB) < 18 || this.active;
     if (!near) return;
+    // Passers-by only glance at the tub: simulate it at half rate unless the game is being played.
+    this.half = !this.half;
+    if (!this.active && this.half) {
+      this.skipped = dt;
+      return;
+    }
+    if (!this.active && this.skipped) {
+      dt += this.skipped;
+      this.skipped = 0;
+    }
 
     this.steer(dt, t);
     for (const f of this.fish) {
