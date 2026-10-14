@@ -97,15 +97,11 @@ export async function buildForest(world, spots) {
   const q = new THREE.Quaternion();
   const meshes = [];
   types.forEach((type, ti) => {
-    const bm = barkMat.clone();
-    bm.roughness = 0.95;
+    // Lambert shading: foliage cards overlap heavily (overdraw), so a cheap lighting model matters
+    // far more here than physically based shading, which looks almost identical on rough leaves.
+    const bm = new THREE.MeshLambertMaterial({ map: barkMat.map });
     addWind(bm, false, type.height);
-    const lm = cardMat.clone();
-    // Photo cards were exported as BLEND; alpha-test keeps depth sorting stable.
-    lm.transparent = false;
-    lm.alphaTest = 0.5;
-    lm.side = THREE.DoubleSide;
-    lm.roughness = 0.9;
+    const lm = new THREE.MeshLambertMaterial({ map: cardMat.map, alphaTest: 0.5, side: THREE.DoubleSide });
     addWind(lm, true, type.height);
     for (const [key, all] of Object.entries(groups[ti])) {
       for (const list of chunkSpots(all)) {
@@ -120,8 +116,9 @@ export async function buildForest(world, spots) {
         leafIM.setColorAt(i, new THREE.Color().setHSL(0.3, 0.15, rand(0.78, 1)));
       });
       for (const im of [trunkIM, leafIM]) {
-        im.castShadow = key === 'near';
-        im.receiveShadow = true;
+        im.castShadow = false; // conifers stay out of the shadow map
+        im.receiveShadow = key === 'near';
+        world.treeChunks.push(im);
         cullable(im);
         world.scene.add(im);
         meshes.push(im);

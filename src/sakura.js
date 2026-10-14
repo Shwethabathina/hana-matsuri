@@ -87,17 +87,11 @@ export function buildSakuraGrove(world, spots, { shadows = true, scale = 1.35 } 
 
   loadTreeOnce()
     .then(({ bark, leaf, barkMat, leafMat }) => {
-      const bm = barkMat.clone();
-      bm.roughness = 0.95;
+      // Lambert shading keeps the many overlapping blossom cards cheap to draw.
+      const bm = new THREE.MeshLambertMaterial({ map: barkMat.map });
       addWind(bm, false);
-      const lm = leafMat.clone();
       // The blossom cards were exported as BLEND; alpha-test avoids sorting artefacts.
-      lm.transparent = false;
-      lm.alphaTest = 0.28;
-      lm.side = THREE.DoubleSide;
-      lm.emissive = new THREE.Color('#ff86b0');
-      lm.emissiveMap = lm.map;
-      lm.emissiveIntensity = 0.05;
+      const lm = new THREE.MeshLambertMaterial({ map: leafMat.map, alphaTest: 0.28, side: THREE.DoubleSide, emissive: new THREE.Color('#ff86b0'), emissiveMap: leafMat.map, emissiveIntensity: 0.05 });
       world.registerGlow(lm, 0.02, 0.35);
       addWind(lm, true);
 
@@ -119,6 +113,7 @@ export function buildSakuraGrove(world, spots, { shadows = true, scale = 1.35 } 
         cullable(im);
         world.scene.add(im);
         state.meshes.push(im);
+        world.treeChunks.push(im);
       }
       }
     })
