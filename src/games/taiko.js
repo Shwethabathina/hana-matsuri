@@ -106,8 +106,7 @@ export class Taiko {
     });
     world.scene.add(stage);
     world.colliders.addRect(T.x, T.z, 3.05, 2.35, 'stage');
-    this.stageLight = world.addLight(new THREE.Vector3(T.x, STAGE_H + 3, T.z + 2.5), { base: 10, distance: 16 });
-    this.stageLightBase = world.lights[world.lights.length - 1];
+    this.stageLightBase = world.addLight(new THREE.Vector3(T.x, STAGE_H + 3, T.z + 2.5), { base: 10, distance: 16 });
 
     // Player's bachi (sticks), children of the camera.
     const stickMat = new THREE.MeshStandardMaterial({ color: '#e0c190' });

@@ -25,15 +25,13 @@ const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 let quality = 'high';
 // Render resolution adapts to frame rate (see frame()); start near native.
-let maxRatio = Math.min(devicePixelRatio, 1.25);
+let maxRatio = Math.min(devicePixelRatio, 1);
 let pixelRatio = maxRatio;
 renderer.setPixelRatio(pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
-// Shadows are re-rendered every few frames instead of every frame (big saving with an 800k-triangle street).
-renderer.shadowMap.autoUpdate = false;
-let shadowFrame = 0;
+
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -44,6 +42,10 @@ scene.add(camera);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.55, 0.9);
+// Bloom runs at half resolution: it is a blur, so the lost detail is invisible and it costs 4x less.
+const bloomSetSize = bloom.setSize.bind(bloom);
+bloom.setSize = (w, h) => bloomSetSize(Math.round(w / 2), Math.round(h / 2));
+let bloomAllowed = true;
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
@@ -207,8 +209,8 @@ function toggleQuality() {
   quality = quality === 'high' ? 'low' : 'high';
   const hi = quality === 'high';
   world.sun.castShadow = hi;
-  bloom.enabled = hi;
-  maxRatio = hi ? Math.min(devicePixelRatio, 1.25) : 0.85;
+  bloomAllowed = hi;
+  maxRatio = hi ? Math.min(devicePixelRatio, 1) : 0.8;
   pixelRatio = maxRatio;
   renderer.setPixelRatio(pixelRatio);
   resize();
@@ -479,6 +481,7 @@ function frame() {
 
   // Bloom only after sunset: in daylight it smears the bright sky into a white haze.
   bloom.strength = 0.55 * world.glow * world.glow;
+  bloom.enabled = bloomAllowed && bloom.strength > 0.02; // skip the bloom passes entirely in daylight
   ambT -= dt;
   if (ambT <= 0) {
     ambT = 0.5;
@@ -500,9 +503,6 @@ function frame() {
       fpsN = 0;
     }
   }
-
-  shadowFrame++;
-  if (shadowFrame % 4 === 0 || tween) renderer.shadowMap.needsUpdate = true;
 
   // Adaptive resolution: drop render scale when the frame rate sags, restore it when smooth.
   perfT += dt;

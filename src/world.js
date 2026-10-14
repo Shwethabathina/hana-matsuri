@@ -19,7 +19,7 @@ export class World {
     this.colliders.bounds = { ...WORLD_BOUNDS };
     this.interactables = [];
     this.glowMats = []; // { mat, day, night } emissive multipliers
-    this.lights = []; // { light, base, flicker }
+    this.lights = []; // lantern light sources: { pos, color, base, distance, flicker }
     this.tod = 0; // 0 = late afternoon, 1 = full night
     this.glow = 0;
     this.night = 0;
@@ -102,14 +102,19 @@ export class World {
     sun.shadow.normalBias = 0.04;
     scene.add(sun, sun.target);
     scene.fog = new THREE.FogExp2(0xcfe0ef, 0.005);
+    this.lightPool = Array.from({ length: 4 }, () => {
+      const l = new THREE.PointLight(0xffa45a, 0, 14, 2);
+      scene.add(l);
+      return l;
+    });
   }
 
+  // Registers a lantern light source. Only the few nearest sources get a real PointLight
+  // (see the light pool in update), because every PointLight costs every lit pixel.
   addLight(pos, { color = 0xffa45a, base = 10, distance = 14, flicker = 0.06 } = {}) {
-    const light = new THREE.PointLight(color, 0, distance, 2);
-    light.position.copy(pos);
-    this.scene.add(light);
-    this.lights.push({ light, base, flicker, seed: Math.random() * 100 });
-    return light;
+    const src = { pos: pos.clone(), color: new THREE.Color(color), base, distance, flicker, seed: Math.random() * 100, d2: 0 };
+    this.lights.push(src);
+    return src;
   }
 
   registerGlow(mat, day, night) {
@@ -130,9 +135,10 @@ export class World {
     root.updateMatrixWorld(true);
     root.traverse((o) => {
       if (!o.isMesh) return;
-      o.castShadow = true;
-      o.receiveShadow = true;
       const m = o.material;
+      // The two big canopy trees are ~400k triangles; drawing them into the shadow map every frame is not worth it.
+      o.castShadow = m.name !== 'Material_9.001' && m.name !== 'Material_8.001';
+      o.receiveShadow = true;
       if (m.name === 'tenmaku') {
         // Awning cloth was exported as BLEND; alpha-test avoids sorting artefacts.
         m.transparent = false;
@@ -705,7 +711,7 @@ export class World {
     u.rayleigh.value = keyLerp([[0, 1.1], [0.6, 2.6], [1, 0.4]], tod);
     u.turbidity.value = keyLerp([[0, 3], [0.6, 8], [1, 1.5]], tod);
 
-    const sunI = keyLerp([[0, 2.2], [0.5, 2.0], [0.64, 0.9], [0.72, 0]], tod);
+    const sunI = keyLerp([[0, 2.7], [0.5, 2.3], [0.64, 1.0], [0.72, 0]], tod);
     const moonI = keyLerp([[0.72, 0], [0.9, 0.45], [1, 0.5]], tod);
     const sun = this.sun;
     const snap = (v) => Math.round(v / 2) * 2;
@@ -725,25 +731,35 @@ export class World {
 
     keyColor([[0, '#bcd8ff'], [0.6, '#ffb48a'], [0.8, '#4a4a8a'], [1, '#243060']], tod, this.hemi.color);
     keyColor([[0, '#7a6a52'], [0.6, '#6a4a3a'], [1, '#101020']], tod, this.hemi.groundColor);
-    this.hemi.intensity = keyLerp([[0, 0.7], [0.6, 0.6], [0.85, 0.32], [1, 0.28]], tod) * (1 - 0.75 * F);
+    this.hemi.intensity = keyLerp([[0, 1.1], [0.6, 0.8], [0.85, 0.35], [1, 0.28]], tod) * (1 - 0.75 * F);
 
     const fog = this.scene.fog;
     keyColor([[0, '#cfe0ef'], [0.55, '#f3c29a'], [0.7, '#d9785a'], [0.82, '#3a2e55'], [1, '#0b1030']], tod, fog.color);
     fog.color.lerp(new THREE.Color('#05070d'), F * 0.85);
-    fog.density = lerp(keyLerp([[0, 0.0022], [0.7, 0.006], [1, 0.011]], tod), 0.075, F);
+    fog.density = lerp(keyLerp([[0, 0.004], [0.7, 0.007], [1, 0.011]], tod), 0.075, F);
 
-    this.renderer.toneMappingExposure = keyLerp([[0, 0.5], [0.6, 0.56], [1, 0.72]], tod);
-    this.scene.environmentIntensity = keyLerp([[0, 0.5], [0.6, 0.35], [1, 0.12]], tod) * (1 - 0.8 * F);
+    this.renderer.toneMappingExposure = keyLerp([[0, 0.6], [0.6, 0.62], [1, 0.72]], tod);
+    this.scene.environmentIntensity = keyLerp([[0, 0.8], [0.6, 0.45], [1, 0.12]], tod) * (1 - 0.8 * F);
 
     const night = smoothstep(0.62, 0.95, tod);
     this.night = night;
     const glow = smoothstep(0.4, 0.85, tod);
     this.glow = glow;
-    for (const g of this.glowMats) g.mat.emissiveIntensity = lerp(g.day * 0.35, g.night * 0.6, glow); // lanterns barely glow in daylight
-    for (const L0 of this.lights) {
-      const flick = 1 + Math.sin(t * 13 + L0.seed) * L0.flicker * 0.5 + Math.sin(t * 7.3 + L0.seed * 2) * L0.flicker * 0.5;
-      L0.light.intensity = L0.base * 0.45 * glow * flick;
-    }
+    for (const g of this.glowMats) g.mat.emissiveIntensity = lerp(g.day, g.night * 0.6, glow);
+    for (const s of this.lights) s.d2 = s.pos.distanceToSquared(focus);
+    const nearest = this.lights.slice().sort((a, b) => a.d2 - b.d2);
+    this.lightPool.forEach((L, i) => {
+      const s = nearest[i];
+      if (!s || glow < 0.01) {
+        L.intensity = 0;
+        return;
+      }
+      const flick = 1 + Math.sin(t * 13 + s.seed) * s.flicker * 0.5 + Math.sin(t * 7.3 + s.seed * 2) * s.flicker * 0.5;
+      L.position.copy(s.pos);
+      L.color.copy(s.color);
+      L.distance = s.distance;
+      L.intensity = s.base * 0.45 * glow * flick;
+    });
     this.stars.material.opacity = night * (1 - 0.5 * F);
     this.moon.material.opacity = night;
     this.moon.position.copy(this.moonDir).multiplyScalar(1500);
