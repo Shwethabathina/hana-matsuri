@@ -24,10 +24,16 @@ import { damp, lerp, pick } from './util.js';
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 let quality = 'high';
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+// Render resolution adapts to frame rate (see frame()); start near native.
+let maxRatio = Math.min(devicePixelRatio, 1.25);
+let pixelRatio = maxRatio;
+renderer.setPixelRatio(pixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+// Shadows are re-rendered every few frames instead of every frame (big saving with an 800k-triangle street).
+renderer.shadowMap.autoUpdate = false;
+let shadowFrame = 0;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -202,7 +208,9 @@ function toggleQuality() {
   const hi = quality === 'high';
   world.sun.castShadow = hi;
   bloom.enabled = hi;
-  renderer.setPixelRatio(hi ? Math.min(devicePixelRatio, 1.5) : 0.85);
+  maxRatio = hi ? Math.min(devicePixelRatio, 1.25) : 0.85;
+  pixelRatio = maxRatio;
+  renderer.setPixelRatio(pixelRatio);
   resize();
   document.getElementById('btn-quality').textContent = hi ? 'High (G)' : 'Low (G)';
 }
@@ -378,6 +386,8 @@ async function boot() {
   window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto };
   // Warm up shaders so the first frame after entering doesn't hitch.
   renderer.compile(scene, camera);
+  // Tree models stream in after start-up; compile their shaders before they first appear.
+  Promise.allSettled([world.forestReady, games.goldfish.ready]).then(() => renderer.compileAsync?.(scene, camera));
   ui.progress(1, 'Ready. Put on your yukata!');
   const btn = document.getElementById('enter');
   btn.disabled = false;
@@ -398,6 +408,8 @@ let ambT = 0;
 let fpsAcc = 0;
 let fpsN = 0;
 let mmT = 0;
+let perfT = 0;
+let perfN = 0;
 
 function frame() {
   requestAnimationFrame(frame);
@@ -482,9 +494,29 @@ function frame() {
     fpsAcc += dt;
     fpsN++;
     if (fpsAcc > 0.5) {
-      document.getElementById('fps').textContent = `${Math.round(fpsN / fpsAcc)} fps · ${renderer.info.render.triangles.toLocaleString()} tris`;
+      document.getElementById('fps').textContent = `${Math.round(fpsN / fpsAcc)} fps · ${renderer.info.render.triangles.toLocaleString()} tris · ${pixelRatio.toFixed(2)}x res`;
       fpsAcc = 0;
       fpsN = 0;
+    }
+  }
+
+  shadowFrame++;
+  if (shadowFrame % 4 === 0 || tween) renderer.shadowMap.needsUpdate = true;
+
+  // Adaptive resolution: drop render scale when the frame rate sags, restore it when smooth.
+  perfT += dt;
+  perfN++;
+  if (perfT > 1.5) {
+    const fps = perfN / perfT;
+    perfT = 0;
+    perfN = 0;
+    let next = pixelRatio;
+    if (fps < 45 && pixelRatio > 0.6) next = Math.max(0.6, pixelRatio - 0.15);
+    else if (fps > 57 && pixelRatio < maxRatio) next = Math.min(maxRatio, pixelRatio + 0.1);
+    if (next !== pixelRatio) {
+      pixelRatio = next;
+      renderer.setPixelRatio(pixelRatio);
+      resize();
     }
   }
 

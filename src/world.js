@@ -595,8 +595,8 @@ export class World {
     };
     this.distToKimo = distToKimo;
     // Kimodameshi forest: dense cedars except along the path.
-    for (let x = 17; x < 60; x += 2.3) {
-      for (let z = -58; z < -11; z += 2.3) {
+    for (let x = 17; x < 60; x += 3.1) {
+      for (let z = -58; z < -11; z += 3.1) {
         const px = x + rand(-0.9, 0.9);
         const pz = z + rand(-0.9, 0.9);
         if (distToKimo(px, pz) < 2.6) continue;
@@ -605,8 +605,8 @@ export class World {
       }
     }
     // Background woodland ringing the festival, leaving the southern sky open for fireworks.
-    for (let x = -70; x < 110; x += 7.5) {
-      for (let z = -95; z < 110; z += 7.5) {
+    for (let x = -70; x < 110; x += 13) {
+      for (let z = -95; z < 110; z += 13) {
         const px = x + rand(-2.5, 2.5);
         const pz = z + rand(-2.5, 2.5);
         if (px > -15 && px < 60 && pz > -17 && pz < 16) continue;
@@ -623,8 +623,8 @@ export class World {
     for (const [x, z, s, collide] of spots) if (collide) this.colliders.addCircle(x, z, 0.35 * s, 'tree');
     // Cherry blossoms ring the festival so they, not the conifers, frame every view.
     const ring = [];
-    for (let x = -38; x < 84; x += 8) {
-      for (let z = -38; z < 44; z += 8) {
+    for (let x = -38; x < 84; x += 10.5) {
+      for (let z = -38; z < 44; z += 10.5) {
         const px = x + rand(-2.5, 2.5);
         const pz = z + rand(-2.5, 2.5);
         if (px > -16 && px < 60 && pz > -18 && pz < 17) continue; // festival + plaza

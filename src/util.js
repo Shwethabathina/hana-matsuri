@@ -123,3 +123,22 @@ export function glowTexture() {
   });
   return _glow;
 }
+
+// Group [x, z, ...] spots into square cells so each cell becomes its own InstancedMesh
+// and the renderer can frustum-cull the ones that are off screen.
+export function chunkSpots(spots, cell = 40) {
+  const map = new Map();
+  for (const s of spots) {
+    const key = `${Math.floor(s[0] / cell)},${Math.floor(s[1] / cell)}`;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(s);
+  }
+  return [...map.values()];
+}
+
+// Enable per-chunk culling once the instance matrices are set. The margin covers wind sway.
+export function cullable(im, margin = 3) {
+  im.computeBoundingSphere();
+  im.boundingSphere.radius += margin;
+  im.frustumCulled = true;
+}

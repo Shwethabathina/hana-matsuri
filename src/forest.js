@@ -3,11 +3,11 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { addWind } from './sakura.js';
-import { rand } from './util.js';
+import { chunkSpots, cullable, rand } from './util.js';
 
 const FOREST_URL = 'models/forest.glb'; // "a forest (3) with a road at night for game" by dasy444, CC-BY-4.0
 const METRES_PER_UNIT = 4.2; // the source diorama's trees are ~2.4 units tall -> ~10 m
-const MAX_TYPES = 6;
+const MAX_TYPES = 4;
 
 // Copy an (often quantized) geometry into plain float position/normal/uv so it can be
 // transformed and merged.
@@ -107,8 +107,8 @@ export async function buildForest(world, spots) {
     lm.side = THREE.DoubleSide;
     lm.roughness = 0.9;
     addWind(lm, true, type.height);
-    for (const [key, list] of Object.entries(groups[ti])) {
-      if (!list.length) continue;
+    for (const [key, all] of Object.entries(groups[ti])) {
+      for (const list of chunkSpots(all)) {
       const trunkIM = new THREE.InstancedMesh(type.bark, bm, list.length);
       const leafIM = new THREE.InstancedMesh(type.leaf, lm, list.length);
       list.forEach(([x, z, sc], i) => {
@@ -122,9 +122,10 @@ export async function buildForest(world, spots) {
       for (const im of [trunkIM, leafIM]) {
         im.castShadow = key === 'near';
         im.receiveShadow = true;
-        im.frustumCulled = false;
+        cullable(im);
         world.scene.add(im);
         meshes.push(im);
+      }
       }
     }
   });

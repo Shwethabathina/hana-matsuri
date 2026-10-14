@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { rand } from './util.js';
+import { chunkSpots, cullable, rand } from './util.js';
 
 const SAKURA_URL = 'models/sakura.glb'; // "Sakura Tree 01 - Low Poly Model" by Jogoss, CC-BY-4.0
 const TREE_HEIGHT = 6.2; // metres for scale 1
@@ -101,11 +101,12 @@ export function buildSakuraGrove(world, spots, { shadows = true, scale = 1.35 } 
       world.registerGlow(lm, 0.02, 0.35);
       addWind(lm, true);
 
-      const trunks = new THREE.InstancedMesh(bark, bm, spots.length);
-      const crowns = new THREE.InstancedMesh(leaf, lm, spots.length);
       const m = new THREE.Matrix4();
       const q = new THREE.Quaternion();
-      spots.forEach(([x, z, y = 0, sc = 1], i) => {
+      for (const list of chunkSpots(spots)) {
+      const trunks = new THREE.InstancedMesh(bark, bm, list.length);
+      const crowns = new THREE.InstancedMesh(leaf, lm, list.length);
+      list.forEach(([x, z, y = 0, sc = 1], i) => {
         q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rand(0, Math.PI * 2));
         const k = sc * scale * rand(0.9, 1.12);
         m.compose(new THREE.Vector3(x, y - 0.05, z), q, new THREE.Vector3(k, k * rand(0.92, 1.08), k));
@@ -115,10 +116,11 @@ export function buildSakuraGrove(world, spots, { shadows = true, scale = 1.35 } 
       for (const im of [trunks, crowns]) {
         im.castShadow = shadows;
         im.receiveShadow = true;
-        im.frustumCulled = false;
+        cullable(im);
         world.scene.add(im);
+        state.meshes.push(im);
       }
-      state.meshes = [trunks, crowns];
+      }
     })
     .catch((err) => console.warn('Sakura model failed to load', err));
 
