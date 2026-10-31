@@ -25,7 +25,7 @@ export class Villager {
     this.state = 'idle';
     this.noticeT = 0;
     this.lastSeen = 99;
-    this.senseT = 0;
+    this.senseT = Math.random() * 0.1; // stagger raycasts between villagers
     this.result = null;
     this.stats = { senses: 0, radiusHits: 0, fovLosHits: 0, falsePositivesAvoided: 0 };
     this.c = makeCharacter({ gender: def.gender, yukata: def.yukata, obi: def.obi, child: def.child });

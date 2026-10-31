@@ -76,7 +76,7 @@ export class HeirloomQuest {
     this.points = {
       cart: [2.2, -0.9],
       dango: [2.0, -11.5],
-      bell: [-11.4, -8.2],
+      bell: [-3.3, -5.3], // quiet pocket behind the west building
     };
 
     // Clue 1: the festival cart the bell was taken from, with a torn red-and-white cord.
@@ -147,17 +147,15 @@ export class HeirloomQuest {
     this.prints = new THREE.Group();
     const printMat = new THREE.MeshBasicMaterial({ color: '#3b2a1c', transparent: true, opacity: 0.75, depthWrite: false });
     const printGeo = new THREE.CircleGeometry(0.06, 8).rotateX(-Math.PI / 2);
-    const [ax, az] = this.points.dango;
-    const [bx, bz] = this.points.bell;
-    const steps = 28;
-    for (let i = 1; i < steps; i++) {
-      const u = i / steps;
-      // Curve around the round tower rather than straight through it.
-      const x = ax + (bx - ax) * u - Math.sin(u * Math.PI) * 2.5;
-      const z = az + (bz - az) * u - Math.sin(u * Math.PI) * 3.5;
-      const side = i % 2 ? 0.08 : -0.08;
+    // Follow the real walkable route from the dango to the hiding place.
+    const route = T.findPath(this.points.dango, this.points.bell);
+    for (let i = 2; i < route.length - 1; i += 2) {
+      const [x, z] = route[i];
+      const [nx, nz] = route[Math.min(route.length - 1, i + 1)];
+      const side = (i / 2) % 2 ? 0.09 : -0.09;
+      const len = Math.hypot(nx - x, nz - z) || 1;
       const p = new THREE.Mesh(printGeo, printMat);
-      p.position.copy(at(x + side, z)).add(new THREE.Vector3(0, 0.03, 0));
+      p.position.copy(at(x - ((nz - z) / len) * side, z + ((nx - x) / len) * side)).add(new THREE.Vector3(0, 0.03, 0));
       this.prints.add(p);
     }
     scene.add(this.prints);
@@ -199,9 +197,11 @@ export class HeirloomQuest {
 
   syncWorld() {
     const s = this.state;
-    this.dango.visible = s <= S.FIND_DANGO || s === S.FIND_BELL;
+    // Clue objects only appear once the story has pointed the player towards them.
+    this.dango.visible = s === S.FIND_DANGO || s === S.FIND_BELL;
     this.prints.visible = s === S.FIND_BELL;
-    this.bell.visible = s <= S.FIND_BELL;
+    this.bellRoot.visible = s === S.FIND_BELL;
+    this.bell.visible = s === S.FIND_BELL;
     this.cord.visible = s <= S.FIND_CORD;
   }
 

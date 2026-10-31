@@ -11,6 +11,8 @@ const CELL = 0.5;
 const LOCAL = { minX: -23, maxX: 23, minZ: -29, maxZ: 19 }; // local ground extent (metres)
 const CENTER = { x: 0, z: -5 }; // middle of the town's ground disc (local)
 const WALK_RADIUS = 20; // walkable disc radius (local)
+// The streets themselves: outside this rectangle the model is only an empty sand ring with backdrop trees.
+const PLAY = { minX: -4.6, maxX: 6.8, minZ: -22.6, maxZ: 7.5 };
 
 // Material groups (names come from the source SketchUp export).
 const GROUND = /^(tuti22|tuti3|yuka2|yuka3|ring8|material_0)$/;
@@ -194,7 +196,8 @@ export class Town {
       for (let i = 0; i < w; i++) {
         const x = LOCAL.minX + (i + 0.5) * CELL;
         const z = LOCAL.minZ + (j + 0.5) * CELL;
-        if (Math.hypot(x - CENTER.x, z - CENTER.z) > WALK_RADIUS || Number.isNaN(heights[j * w + i])) blocked[j * w + i] = 1;
+        const outside = x < PLAY.minX || x > PLAY.maxX || z < PLAY.minZ || z > PLAY.maxZ;
+        if (outside || Math.hypot(x - CENTER.x, z - CENTER.z) > WALK_RADIUS || Number.isNaN(heights[j * w + i])) blocked[j * w + i] = 1;
       }
     }
     this.heights = heights;
@@ -247,6 +250,42 @@ export class Town {
       }
     }
     return (p) => seen[Math.floor((p.z - g.minZ) / CELL) * g.w + Math.floor((p.x - g.minX) / CELL)] === 1;
+  }
+
+  // Shortest walkable path between two local points (BFS on the grid), as local [x, z] points.
+  findPath([ax, az], [bx, bz]) {
+    const g = this.grid;
+    const idx = (x, z) => [Math.floor((x - LOCAL.minX) / CELL), Math.floor((z - LOCAL.minZ) / CELL)];
+    const [si, sj] = idx(ax, az);
+    const [ti, tj] = idx(bx, bz);
+    const prev = new Int32Array(g.w * g.h).fill(-1);
+    const start = sj * g.w + si;
+    prev[start] = start;
+    const q = [start];
+    for (let h = 0; h < q.length; h++) {
+      const k = q[h];
+      if (k === tj * g.w + ti) break;
+      const i = k % g.w;
+      const j = (k - i) / g.w;
+      for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+        const ni = i + di;
+        const nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= g.w || nj >= g.h) continue;
+        const nk = nj * g.w + ni;
+        if (prev[nk] !== -1 || g.blocked[nk]) continue;
+        prev[nk] = k;
+        q.push(nk);
+      }
+    }
+    const out = [];
+    let k = tj * g.w + ti;
+    if (prev[k] === -1) return [[ax, az], [bx, bz]];
+    while (k !== start) {
+      const i = k % g.w;
+      out.push([LOCAL.minX + (i + 0.5) * CELL, LOCAL.minZ + ((k - i) / g.w + 0.5) * CELL]);
+      k = prev[k];
+    }
+    return out.reverse();
   }
 
   buildGates() {

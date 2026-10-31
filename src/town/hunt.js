@@ -62,12 +62,12 @@ export class TreasureHunt {
     });
     clue('clue-dango', 'dango', 'Examine something on the ground', S.FIND_DANGO, () => {
       sfx.chime();
-      this.dialog([['Clue 2 of 2 — a dropped dango', 'A half-eaten <b>dango skewer</b>, and next to it a trail of small <b>paw prints</b> leading west, around the round tower. A tanuki, perhaps?']], () =>
+      this.dialog([['Clue 2 of 2 — a dropped dango', 'A half-eaten <b>dango skewer</b>, and next to it a trail of small <b>paw prints</b> leading back down the path and off to the side. A tanuki, perhaps?']], () =>
         Q.advance(S.FIND_DANGO, S.FIND_BELL));
     });
     clue('clue-bell', 'bell', 'Pick up the Kagura Bell', S.FIND_BELL, () => {
       sfx.suzu();
-      this.dialog([['The Festival Heirloom!', 'Tucked in a straw nest behind the tower: the golden <b>Kagura Bell</b>. The tanuki must have liked the sound. Time to take it back to Hanae.']], () =>
+      this.dialog([['The Festival Heirloom!', 'Tucked in a straw nest behind the building: the golden <b>Kagura Bell</b>. The tanuki must have liked the sound. Time to take it back to Hanae.']], () =>
         Q.advance(S.FIND_BELL, S.RETURN_BELL));
     });
     this.lines = this.buildLines();
@@ -88,7 +88,7 @@ export class TreasureHunt {
         [S.FIND_DANGO]: ['Kenta said the north road? Then follow it toward the temple.'],
         [S.FIND_BELL]: ['Paw prints… a tanuki! They like quiet corners behind buildings.'],
         [S.RETURN_BELL]: [
-          'The Kagura Bell! You found it! Behind the tower, in a tanuki’s nest? Of all places…',
+          'The Kagura Bell! You found it! Hidden right behind the shops? Of all places…',
           'Thank you. The procession can start on time. Please, enjoy the festival!',
         ],
         [S.COMPLETE]: ['Thank you again. The bell sounds wonderful tonight.'],
@@ -105,7 +105,7 @@ export class TreasureHunt {
       child: {
         default: ['I’m waiting for the procession! Mama says it starts when the bell rings.'],
         [S.FIND_DANGO]: ['A furry thief? I saw a <b>tanuki</b> run up this road with something sweet!'],
-        [S.FIND_BELL]: ['The tanuki went around the <b>round tower to the west</b>! I heard jingling!'],
+        [S.FIND_BELL]: ['The tanuki ran back down toward the courtyard and <b>behind the big building</b>! I heard jingling!'],
         [S.COMPLETE]: ['The bell is back! Yay!'],
       },
     };
@@ -295,7 +295,11 @@ export class TreasureHunt {
       const dx = (tg.x - p.pos.x) / (d || 1);
       const dz = (tg.z - p.pos.z) / (d || 1);
       const ang = Math.atan2(f.x * dz - f.z * dx, f.x * dx + f.z * dz);
-      this.ui.questDir(ang, d);
+      this.dirT = (this.dirT || 0) - dt;
+      if (this.dirT <= 0) {
+        this.dirT = 0.1; // HUD text at 10 Hz is plenty and avoids per-frame DOM work
+        this.ui.questDir(ang, d);
+      }
     } else {
       this.ui.questDir(null);
     }
