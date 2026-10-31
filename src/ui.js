@@ -86,7 +86,19 @@ export function createUI() {
       el.classList.toggle('done', !!q.done);
       const pips = [0, 1].map((i) => `<span class="pip ${i < q.clues ? 'on' : ''}"></span>`).join('');
       el.innerHTML = `<div class="qt">${q.title}</div><div class="qo">${q.done ? '✔ ' : ''}${q.objective}</div>` +
-        `<div class="qc">Clues ${pips} ${q.clues}/2${q.bell ? ' · 🔔 Kagura Bell in hand' : ''}</div>`;
+        `<div class="qc">Clues ${pips} ${q.clues}/2${q.bell ? ' · 🔔 Kagura Bell in hand' : ''}</div><div class="qd" id="qdir"></div>`;
+    },
+    // Direction arrow + distance to the current goal (angle in radians, 0 = straight ahead, + = right).
+    questDir(angle, dist) {
+      const el = $('qdir');
+      if (!el) return;
+      if (angle === null) {
+        el.style.display = 'none';
+        return;
+      }
+      el.style.display = 'block';
+      const deg = Math.round((angle * 180) / Math.PI);
+      el.innerHTML = dist < 2.5 ? '<b>Here — press E</b>' : `<span class="arrow" style="transform:rotate(${deg}deg)">⬆</span> ${Math.round(dist)} m`;
     },
     // Short fade-to-black used for area transitions.
     fade(mid) {

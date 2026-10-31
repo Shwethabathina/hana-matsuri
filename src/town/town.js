@@ -261,9 +261,9 @@ export class Town {
     W.addInteractable({ id: 'to-town', pos: new THREE.Vector3(13.4, 0, 3.7), radius: 1.8, label: 'Travel to the Old Town (treasure hunt)', action: () => this.cb.enter?.() });
 
     // Town side: a torii behind the arrival point leads back to the festival.
-    const tGate = this.toWorld(0.5, 16.3);
-    W.buildTorii(tGate, 0.6, Math.PI / 2);
-    W.addInteractable({ id: 'to-festival', pos: this.toWorld(0.5, 14.5), radius: 1.6, label: 'Return to the festival', action: () => this.cb.exit?.() });
+    const tGate = this.toWorld(3.2, 3.6);
+    W.buildTorii(tGate, 0.55, 0);
+    W.addInteractable({ id: 'to-festival', pos: this.toWorld(3.2, 3.0), radius: 1.3, label: 'Return to the festival', action: () => this.cb.exit?.() });
   }
 
   buildLights() {
@@ -319,7 +319,7 @@ export class Town {
   }
 }
 
-export const townSpawn = () => new THREE.Vector3(TOWN_ORIGIN.x + 0.5, 0, TOWN_ORIGIN.z + 12.0);
+export const townSpawn = () => new THREE.Vector3(TOWN_ORIGIN.x + 0.5, 0, TOWN_ORIGIN.z + 3.1);
 
 // Small glinting marker texture shared by clues.
 let glintTex = null;

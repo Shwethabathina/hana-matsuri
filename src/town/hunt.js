@@ -8,7 +8,7 @@ import { sfx } from '../audio.js';
 // Start -> Active -> End -> Reset loop. All progress changes go through quest.advance().
 const VILLAGERS = [
   {
-    key: 'organizer', name: 'Hanae Sato', role: 'Festival organizer', at: [2.6, 11.0], heading: -1.13, scan: 0.5,
+    key: 'organizer', name: 'Hanae Sato', role: 'Festival organizer', at: [-1.6, 2.4], heading: 1.1, scan: 0.5,
     gender: 'f', yukata: ['#2d4a8a', '#f4e7c8'], obi: '#f2c14e', greet: 'Ah, a visitor! Over here, please!',
   },
   {
@@ -81,9 +81,9 @@ export class TreasureHunt {
         [S.NOT_STARTED]: [
           'Welcome to the old town! I am Hanae, I organise tonight’s festival procession.',
           'Something terrible has happened — the <b>Kagura Bell</b>, our festival heirloom, has vanished from its cart!',
-          'The cart is in the courtyard just north of here. Could you take a look for any clues?',
+          'Its cart is right here, on the east side of the courtyard. Could you take a look for clues?',
         ],
-        [S.FIND_CORD]: ['The festival cart is in the courtyard, straight ahead to the north.'],
+        [S.FIND_CORD]: ['The festival cart is just over there, on the east side of the courtyard.'],
         [S.ASK_SHOPKEEPER]: ['Crumbs? Kenta sells dango in the courtyard. Ask him — he sees everyone who passes.'],
         [S.FIND_DANGO]: ['Kenta said the north road? Then follow it toward the temple.'],
         [S.FIND_BELL]: ['Paw prints… a tanuki! They like quiet corners behind buildings.'],
@@ -118,6 +118,10 @@ export class TreasureHunt {
       v.noticeT = 0;
       v.lastSeen = 0;
       v.say('Oh! You startled me!');
+      // They turn around, then the conversation starts on its own.
+      setTimeout(() => {
+        if (this.area === 'town' && !this.talking && !this.ui.panelOpen) this.interact(v);
+      }, 900);
       return;
     }
     const set = this.lines[v.def.key];
@@ -198,7 +202,10 @@ export class TreasureHunt {
       this.onArea?.('town');
       this.refreshHud();
       this.player.enabled = true;
-      if (this.quest.state === S.NOT_STARTED) this.ui.toast('⛩️ The Old Town. Someone near the gate seems worried…');
+      if (!this.introShown) {
+        this.introShown = true;
+        this.howToPlay();
+      }
     });
   }
 
@@ -216,6 +223,43 @@ export class TreasureHunt {
     });
   }
 
+  howToPlay() {
+    const P = this.player;
+    P.enabled = false;
+    P.unlock();
+    this.ui.panel(`<h2>🔔 The Missing Festival Heirloom</h2>
+      <p>The festival's golden <b>Kagura Bell</b> has been stolen. Find it and bring it back.</p>
+      <ol class="howto">
+        <li>Follow the <b style="color:#ffd24a">gold ▼ marker</b>. The arrow at the top of the screen shows its direction and distance.</li>
+        <li>Walk up to people and press <b>E</b> to talk. They only notice you if they can <i>see</i> you, so approach from the front.</li>
+        <li>Press <b>E</b> on <b>sparkling objects</b> to examine clues (2 to find).</li>
+        <li>Bring the bell back to <b>Hanae</b> to finish. The torii gate in the courtyard takes you back to the festival.</li>
+      </ol>
+      <p class="muted">Controls: WASD move · Mouse look (click the screen) · Shift run · E interact.</p>`,
+    () => (P.enabled = true), 'Start the hunt');
+  }
+
+  // Where the player should go next (world position), following the quest state.
+  target() {
+    const Q = this.quest;
+    const V = this.villagers;
+    switch (Q.state) {
+      case S.NOT_STARTED:
+      case S.RETURN_BELL:
+        return V.organizer.pos;
+      case S.FIND_CORD:
+        return Q.worldPoint('cart');
+      case S.ASK_SHOPKEEPER:
+        return V.shopkeeper.pos;
+      case S.FIND_DANGO:
+        return Q.worldPoint('dango');
+      case S.FIND_BELL:
+        return Q.worldPoint('bell');
+      default:
+        return null;
+    }
+  }
+
   refreshHud() {
     const Q = this.quest;
     if (!Q) return;
@@ -231,6 +275,30 @@ export class TreasureHunt {
     this.villagers.organizer.marker.visible = this.quest.state === S.NOT_STARTED || this.quest.state === S.RETURN_BELL;
     this.villagers.shopkeeper.marker.visible = this.quest.state === S.ASK_SHOPKEEPER;
     this.quest.update(dt, t, p.pos);
+
+    // Guidance: a gold marker above the next goal (visible through buildings), plus direction + distance.
+    const tg = this.target();
+    if (!this.beacon) {
+      this.beacon = new THREE.Sprite(new THREE.SpriteMaterial({ map: beaconTexture(), depthTest: false, transparent: true }));
+      this.beacon.renderOrder = 10;
+      this.town.root.parent.add(this.beacon);
+    }
+    this.beacon.visible = !!tg && !this.talking;
+    if (tg) {
+      const d = Math.hypot(tg.x - p.pos.x, tg.z - p.pos.z);
+      const s = THREE.MathUtils.clamp(d * 0.045, 0.3, 1.2);
+      this.beacon.scale.set(s, s, 1);
+      this.beacon.position.set(tg.x, this.town.heightAt(tg.x, tg.z) + 2.7 + Math.sin(t * 2.5) * 0.12, tg.z);
+      this.beacon.material.opacity = d < 2.5 ? 0.35 : 1;
+      // Angle of the target relative to where the player looks (0 = straight ahead, + = to the right).
+      const f = p.forward;
+      const dx = (tg.x - p.pos.x) / (d || 1);
+      const dz = (tg.z - p.pos.z) / (d || 1);
+      const ang = Math.atan2(f.x * dz - f.z * dx, f.x * dx + f.z * dz);
+      this.ui.questDir(ang, d);
+    } else {
+      this.ui.questDir(null);
+    }
   }
 
   setDebug(on) {
@@ -243,4 +311,30 @@ export class TreasureHunt {
     for (const v of Object.values(this.villagers)) for (const k in out) out[k] += v.stats[k];
     return out;
   }
+}
+
+let beaconTex = null;
+function beaconTexture() {
+  if (beaconTex) return beaconTex;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grd = g.createRadialGradient(64, 54, 4, 64, 54, 60);
+  grd.addColorStop(0, 'rgba(255,220,120,0.55)');
+  grd.addColorStop(1, 'rgba(255,200,80,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 128);
+  g.fillStyle = '#ffd24a';
+  g.strokeStyle = '#4a2a08';
+  g.lineWidth = 5;
+  g.beginPath();
+  g.moveTo(34, 30);
+  g.lineTo(94, 30);
+  g.lineTo(64, 92);
+  g.closePath();
+  g.stroke();
+  g.fill();
+  beaconTex = new THREE.CanvasTexture(c);
+  beaconTex.colorSpace = THREE.SRGBColorSpace;
+  return beaconTex;
 }

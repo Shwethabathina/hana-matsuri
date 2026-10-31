@@ -16,10 +16,10 @@ export const S = {
 };
 
 const OBJECTIVES = {
-  [S.NOT_STARTED]: 'Speak to the festival organizer near the town entrance',
-  [S.FIND_CORD]: 'Search the festival cart in the town courtyard',
-  [S.ASK_SHOPKEEPER]: 'Ask the dango seller about the torn bell cord',
-  [S.FIND_DANGO]: 'Follow the north road and look for what the thief dropped',
+  [S.NOT_STARTED]: 'Talk to Hanae, the festival organizer',
+  [S.FIND_CORD]: 'Examine the festival cart in the courtyard',
+  [S.ASK_SHOPKEEPER]: 'Ask Kenta the dango seller about the torn cord',
+  [S.FIND_DANGO]: 'Search the north road for what the thief dropped',
   [S.FIND_BELL]: 'Follow the paw prints to the hiding place',
   [S.RETURN_BELL]: 'Return the Kagura Bell to the organizer',
   [S.COMPLETE]: 'Treasure hunt complete!',
@@ -74,7 +74,7 @@ export class HeirloomQuest {
       return w;
     };
     this.points = {
-      cart: [0.5, 1.6],
+      cart: [2.2, -0.9],
       dango: [2.0, -11.5],
       bell: [-11.4, -8.2],
     };
@@ -214,7 +214,7 @@ export class HeirloomQuest {
     const p = { cart: this.cord, dango: this.dango, bell: this.bell }[key];
     const wp = p.getWorldPosition(new THREE.Vector3());
     const d = Math.hypot(wp.x - playerPos.x, wp.z - playerPos.z);
-    this.glint.visible = d < 7;
+    this.glint.visible = d < 30;
     this.glint.position.copy(wp).add(new THREE.Vector3(0, 0.25 + Math.sin(t * 3) * 0.05, 0));
     this.glint.material.opacity = 0.5 + Math.sin(t * 6) * 0.3;
     if (key === 'bell') this.bell.rotation.y += dt * 0.6;

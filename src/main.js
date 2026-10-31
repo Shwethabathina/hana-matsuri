@@ -392,6 +392,19 @@ function drawTownMinimap() {
     mm.arc(tx(v.pos.x), tz(v.pos.z), v.marker.visible ? 7 : 5, 0, 7);
     mm.fill();
   }
+  const tg = hunt.target();
+  if (tg) {
+    mm.fillStyle = '#ffd24a';
+    mm.strokeStyle = '#4a2a08';
+    mm.lineWidth = 3;
+    mm.beginPath();
+    mm.moveTo(tx(tg.x) - 11, tz(tg.z) - 14);
+    mm.lineTo(tx(tg.x) + 11, tz(tg.z) - 14);
+    mm.lineTo(tx(tg.x), tz(tg.z) + 6);
+    mm.closePath();
+    mm.stroke();
+    mm.fill();
+  }
   drawPlayerArrow(tx(player.pos.x), tz(player.pos.z));
 }
 
@@ -684,7 +697,13 @@ function frame() {
     ui.toast('🏮 You reached the game plaza! Booths ahead, shrine to the east.');
   }
 
-  bloom.strength = lerp(0.15, 0.55, world.glow);
+  // The town is an open plain facing the low evening sun: tone down the sun halo, bloom and exposure there.
+  const inTown = hunt?.area === 'town';
+  const skyU = world.sky.material.uniforms;
+  skyU.mieCoefficient.value = inTown ? 0.0015 : 0.005;
+  skyU.mieDirectionalG.value = inTown ? 0.9 : 0.8;
+  if (inTown) renderer.toneMappingExposure *= 0.82;
+  bloom.strength = lerp(0.15, 0.55, world.glow) * (inTown ? 0.45 : 1);
   ambT -= dt;
   if (ambT <= 0) {
     ambT = 0.5;
