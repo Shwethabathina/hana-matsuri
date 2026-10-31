@@ -19,6 +19,8 @@ export class Player {
     this.bob = 0;
     this.shake = 0;
     this.lastStep = 0;
+    this.bounds = undefined; // collision bounds override (undefined = festival bounds)
+    this.groundAt = null; // optional (x, z) => ground height, used on the town's raised stone floors
 
     addEventListener('keydown', (e) => this.keys.add(e.code));
     addEventListener('keyup', (e) => this.keys.delete(e.code));
@@ -34,7 +36,7 @@ export class Player {
   }
 
   place(v, yaw = this.yaw) {
-    this.pos.set(v.x, 0, v.z);
+    this.pos.set(v.x, this.groundAt ? this.groundAt(v.x, v.z) : 0, v.z);
     this.yaw = yaw;
   }
 
@@ -70,7 +72,9 @@ export class Player {
       this.vel.multiplyScalar(Math.exp(-10 * dt));
     }
     this.pos.addScaledVector(this.vel, dt);
-    this.colliders.resolve(this.pos, this.radius);
+    this.colliders.resolve(this.pos, this.radius, this.bounds);
+    const gy = this.groundAt ? this.groundAt(this.pos.x, this.pos.z) : 0;
+    this.pos.y += (gy - this.pos.y) * (1 - Math.exp(-14 * dt)); // smooth steps onto raised floors
 
     const sp = this.vel.length();
     this.bob += sp * dt * 2.2;
@@ -81,7 +85,7 @@ export class Player {
     const c = this.camera;
     const bobY = Math.sin(this.bob * 2) * 0.035 * Math.min(1, this.vel.length() / 3);
     const sh = this.shake * this.shake;
-    c.position.set(this.pos.x + (Math.random() - 0.5) * sh * 0.15, EYE + bobY + (Math.random() - 0.5) * sh * 0.15, this.pos.z);
+    c.position.set(this.pos.x + (Math.random() - 0.5) * sh * 0.15, this.pos.y + EYE + bobY + (Math.random() - 0.5) * sh * 0.15, this.pos.z);
     c.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
   }
 }

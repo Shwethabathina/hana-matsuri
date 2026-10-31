@@ -12,6 +12,8 @@ import { Goldfish } from './games/goldfish.js';
 import { Shateki } from './games/shateki.js';
 import { Taiko } from './games/taiko.js';
 import { Kimodameshi } from './games/kimodameshi.js';
+import { TreasureHunt } from './town/hunt.js';
+import { S as QS } from './town/quest.js';
 import { buildBooth } from './booth.js';
 import { buildStallGoods } from './stallgoods.js';
 import { createUI } from './ui.js';
@@ -35,6 +37,8 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
+// Draw calls / triangles are accumulated over every pass of a frame and reset at the start of frame().
+renderer.info.autoReset = false;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
 const scene = new THREE.Scene();
@@ -201,7 +205,7 @@ let navDebug = null;
 function toggleDebug() {
   G.debug = !G.debug;
   if (navDebug) navDebug.visible = G.debug;
-  document.getElementById('fps').style.display = G.debug ? 'block' : 'none';
+  document.getElementById('btn-debug').classList.toggle('on', G.debug);
   ui.toast(G.debug ? '🧠 AI debug on: NPC behaviour-tree node, A* paths, nav grid (red = blocked)' : 'AI debug off');
 }
 function toggleQuality() {
@@ -214,6 +218,47 @@ function toggleQuality() {
   renderer.setPixelRatio(pixelRatio);
   resize();
   document.getElementById('btn-quality').textContent = hi ? 'High (G)' : 'Low (G)';
+  const sq = document.getElementById('set-quality');
+  if (sq) sq.textContent = hi ? 'High' : 'Low';
+}
+// Optional performance overlay: FPS, frame CPU time, draw calls and triangles from renderer.info.
+let perfOn = false;
+function togglePerf() {
+  perfOn = !perfOn;
+  document.getElementById('fps').style.display = perfOn ? 'block' : 'none';
+  document.getElementById('btn-perf').classList.toggle('on', perfOn);
+  const sp = document.getElementById('set-perf');
+  if (sp) sp.textContent = perfOn ? 'On' : 'Off';
+}
+function toggleDev() {
+  document.getElementById('dev').classList.toggle('open');
+}
+// Area culling (the Assignment 4 performance experiment): while the player is in the town, the festival
+// (~200 m away and only partly hidden by fog) is not rendered and its NPC / minigame simulation is paused.
+let areaCulling = true;
+let festivalObjects = [];
+function applyAreaVisibility() {
+  const hide = areaCulling && hunt?.area === 'town';
+  for (const o of festivalObjects) o.visible = hide ? false : o.userData.festivalVisible;
+}
+function toggleCulling() {
+  areaCulling = !areaCulling;
+  applyAreaVisibility();
+  const b = document.getElementById('btn-cull');
+  b.classList.toggle('on', areaCulling);
+  b.textContent = `Area culling: ${areaCulling ? 'on' : 'off'}`;
+}
+function togglePerceptionDebug() {
+  if (!hunt) return;
+  hunt.setDebug(!hunt.debug);
+  document.getElementById('btn-pdebug').classList.toggle('on', hunt.debug);
+  ui.toast(hunt.debug ? '👁 Vision debug: cones = field of view, line = line of sight (red = blocked by a building)' : 'Vision debug off');
+}
+function togglePerceptionMode() {
+  if (!hunt) return;
+  hunt.mode = hunt.mode === 'fovlos' ? 'radius' : 'fovlos';
+  document.getElementById('btn-pmode').textContent = hunt.mode === 'fovlos' ? 'Vision: FOV+LOS (O)' : 'Vision: radius only (O)';
+  ui.toast(hunt.mode === 'fovlos' ? 'Villagers use distance + field of view + line of sight' : 'Comparison mode: villagers use a plain detection radius (they "see" through walls)');
 }
 document.getElementById('btn-debug').addEventListener('click', toggleDebug);
 document.getElementById('btn-quality').addEventListener('click', toggleQuality);
@@ -221,6 +266,14 @@ document.getElementById('btn-fw').addEventListener('click', () => {
   initAudio();
   startFinale();
 });
+document.getElementById('btn-perf').addEventListener('click', togglePerf);
+document.getElementById('btn-cull').addEventListener('click', toggleCulling);
+document.getElementById('btn-pdebug').addEventListener('click', togglePerceptionDebug);
+document.getElementById('btn-pmode').addEventListener('click', togglePerceptionMode);
+document.getElementById('btn-tp').addEventListener('click', () => hunt?.area === 'festival' && hunt.enter());
+document.getElementById('btn-tp2').addEventListener('click', () => hunt?.area === 'town' && hunt.exit());
+document.getElementById('gear').addEventListener('click', toggleDev);
+document.getElementById('journal-toggle').addEventListener('click', () => ui.toggleJournal());
 
 // ---------------------------------------------------------------- input
 const player = new Player(camera, canvas, world.colliders);
@@ -254,7 +307,22 @@ addEventListener('keydown', (e) => {
       break;
     case 'KeyH':
       player.unlock();
-      ui.panel(document.getElementById('start').querySelector('.grid').outerHTML, null, 'Close');
+      ui.panel(`<h2>How to play</h2>${document.getElementById('howto').innerHTML}`, null, 'Close');
+      break;
+    case 'KeyJ':
+      ui.toggleJournal();
+      break;
+    case 'Backquote':
+      toggleDev();
+      break;
+    case 'KeyY':
+      togglePerf();
+      break;
+    case 'KeyP':
+      togglePerceptionDebug();
+      break;
+    case 'KeyO':
+      togglePerceptionMode();
       break;
   }
 });
@@ -276,7 +344,47 @@ const mm = document.getElementById('minimap').getContext('2d');
 const MM = { minX: -13, maxX: 58, minZ: -56, maxZ: 15 };
 const mmX = (x) => ((x - MM.minX) / (MM.maxX - MM.minX)) * 388;
 const mmY = (z) => ((z - MM.minZ) / (MM.maxZ - MM.minZ)) * 388;
+function drawTownMinimap() {
+  const T = hunt.town;
+  const B = T.bounds;
+  const sx = 388 / (B.maxX - B.minX);
+  const sz = 388 / (B.maxZ - B.minZ);
+  const tx = (x) => (x - B.minX) * sx;
+  const tz = (z) => (z - B.minZ) * sz;
+  mm.fillStyle = '#1c2a1c';
+  mm.fillRect(0, 0, 388, 388);
+  mm.imageSmoothingEnabled = false;
+  mm.drawImage(T.minimap, 0, 0, 388, 388);
+  mm.font = '20px sans-serif';
+  mm.textAlign = 'center';
+  mm.textBaseline = 'middle';
+  const gate = T.toWorld(0.5, 16.3);
+  mm.fillText('⛩️', tx(gate.x), tz(gate.z));
+  for (const v of Object.values(hunt.villagers)) {
+    mm.fillStyle = v.marker.visible ? '#ffd24a' : '#ffe9c0';
+    mm.beginPath();
+    mm.arc(tx(v.pos.x), tz(v.pos.z), v.marker.visible ? 7 : 5, 0, 7);
+    mm.fill();
+  }
+  drawPlayerArrow(tx(player.pos.x), tz(player.pos.z));
+}
+
+function drawPlayerArrow(px, py) {
+  mm.save();
+  mm.translate(px, py);
+  mm.rotate(-player.yaw);
+  mm.fillStyle = '#ff5a3a';
+  mm.beginPath();
+  mm.moveTo(0, -13);
+  mm.lineTo(8, 9);
+  mm.lineTo(-8, 9);
+  mm.closePath();
+  mm.fill();
+  mm.restore();
+}
+
 function drawMinimap(npcs) {
+  if (hunt?.area === 'town') return drawTownMinimap();
   mm.fillStyle = '#1c2a1c';
   mm.fillRect(0, 0, 388, 388);
   mm.fillStyle = '#26361f';
@@ -301,6 +409,7 @@ function drawMinimap(npcs) {
     [L.goldfish, '🐟', G.done.goldfish], [L.shateki, '🎯', G.done.shateki], [L.taiko, '🥁', G.done.taiko],
     [L.kimoEntrance, '👻', G.done.kimodameshi], [L.torii, '⛩️', false], [L.offering, '🙏', G.done.shrine],
     [L.viewing, '🎆', G.done.fireworks], [L.omikuji, '📜', false], [new THREE.Vector3(0, 0, 0), '🏮', G.done.explore],
+    [new THREE.Vector3(13.4, 0, 4.7), '🔔', hunt?.quest?.state === QS.COMPLETE],
   ];
   for (const [p, ic, done] of icons) {
     mm.globalAlpha = done ? 0.45 : 1;
@@ -313,25 +422,14 @@ function drawMinimap(npcs) {
     mm.arc(mmX(a.pos.x), mmY(a.pos.z), 4, 0, 7);
     mm.fill();
   }
-  const px = mmX(player.pos.x);
-  const py = mmY(player.pos.z);
-  mm.save();
-  mm.translate(px, py);
-  mm.rotate(-player.yaw);
-  mm.fillStyle = '#ff5a3a';
-  mm.beginPath();
-  mm.moveTo(0, -13);
-  mm.lineTo(8, 9);
-  mm.lineTo(-8, 9);
-  mm.closePath();
-  mm.fill();
-  mm.restore();
+  drawPlayerArrow(mmX(player.pos.x), mmY(player.pos.z));
 }
 
 // ---------------------------------------------------------------- boot
 let started = false;
 let npcs = null;
 let kimo = null;
+let hunt = null;
 
 async function boot() {
   const manager = new THREE.LoadingManager();
@@ -382,23 +480,94 @@ async function boot() {
     });
   }
 
+  // Everything in the scene so far belongs to the festival area (lights, sky, stars and moon stay on).
+  const keep = new Set([camera, world.sky, world.stars, world.moon, world.sun, world.sun.target, world.hemi]);
+  festivalObjects = scene.children.filter((o) => !keep.has(o) && !o.isLight);
+  for (const o of festivalObjects) o.userData.festivalVisible = o.visible;
+
+  ui.progress(1, 'Loading the Old Town…');
+  hunt = new TreasureHunt({
+    world, player, ui,
+    onArea: (area) => {
+      applyAreaVisibility();
+      document.getElementById('mapname').textContent = area === 'town' ? 'Old Town' : 'Festival street';
+    },
+  });
+  try {
+    await hunt.load();
+  } catch (err) {
+    console.error(err);
+    hunt = null;
+    ui.progress(1, '⚠️ Could not load the Old Town model — the treasure hunt is unavailable.');
+  }
+
   ui.objectives();
   // Handle for debugging / automated screenshots from the console.
-  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto };
+  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto, hunt, renderer, measure, toggleCulling, get areaCulling() { return areaCulling; } };
   // Warm up shaders so the first frame after entering doesn't hitch.
   renderer.compile(scene, camera);
   // Tree models stream in after start-up; compile their shaders before they first appear.
   Promise.allSettled([world.forestReady, games.goldfish.ready]).then(() => renderer.compileAsync?.(scene, camera));
-  ui.progress(1, 'Ready. Put on your yukata!');
-  const btn = document.getElementById('enter');
-  btn.disabled = false;
-  btn.addEventListener('click', () => {
+  ui.progress(1, 'Ready');
+  setTimeout(() => (document.getElementById('progress').style.visibility = 'hidden'), 600);
+  const begin = (toTown) => {
     initAudio();
-    document.getElementById('start').classList.add('hidden');
+    const start = document.getElementById('start');
+    start.classList.add('fading');
+    setTimeout(() => start.classList.add('hidden'), 600);
+    document.body.classList.remove('menu');
     started = true;
+    player.place(L.start, -Math.PI / 2);
+    player.pitch = -0.05;
     player.enabled = true;
     try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch {}
-    ui.toast('Welcome to Hana Matsuri! Walk east (W) down the street of stalls.');
+    if (toTown && hunt) hunt.enter();
+    else ui.toast('Welcome to Hana Matsuri! Walk east (W) down the street of stalls.');
+  };
+  const btn = document.getElementById('enter');
+  btn.disabled = false;
+  btn.addEventListener('click', () => begin(false));
+  const btnTown = document.getElementById('enter-town');
+  btnTown.disabled = !hunt;
+  btnTown.addEventListener('click', () => begin(true));
+}
+
+// ---------------------------------------------------------------- opening menu pages
+{
+  const page = document.getElementById('menu-page');
+  let open = null;
+  const show = (id) => {
+    if (open === id) {
+      page.classList.remove('open');
+      open = null;
+      return;
+    }
+    open = id;
+    page.innerHTML = document.getElementById(id).innerHTML;
+    page.classList.add('open');
+    if (id === 'settings') {
+      const sync = () => {
+        page.querySelector('#set-quality').textContent = quality === 'high' ? 'High' : 'Low';
+        page.querySelector('#set-perf').textContent = perfOn ? 'On' : 'Off';
+        page.querySelector('#set-auto').textContent = autoTime ? 'On' : 'Off';
+      };
+      page.querySelector('#set-quality').onclick = () => (toggleQuality(), sync());
+      page.querySelector('#set-perf').onclick = () => (togglePerf(), sync());
+      page.querySelector('#set-auto').onclick = () => (setAuto(!autoTime), sync());
+      sync();
+    }
+  };
+  document.getElementById('btn-howto').addEventListener('click', () => show('howto'));
+  document.getElementById('btn-settings').addEventListener('click', () => show('settings'));
+}
+
+// ---------------------------------------------------------------- measurement (performance experiment)
+// Averages renderer statistics and frame timings over a window of frames: used to compare area culling
+// on / off in the same position and view. Frame CPU time = JS update + render submission (not GPU time).
+let sampler = null;
+function measure(seconds = 4) {
+  return new Promise((resolve) => {
+    sampler = { until: performance.now() + seconds * 1000, n: 0, calls: 0, tris: 0, cpu: 0, dt: 0, resolve };
   });
 }
 
@@ -412,10 +581,14 @@ let mmT = 0;
 let perfT = 0;
 let perfN = 0;
 
+let cpuMs = 0;
 function frame() {
   requestAnimationFrame(frame);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const t0 = performance.now();
+  const rawDt = clock.getDelta();
+  const dt = Math.min(rawDt, 0.05);
   elapsed += dt;
+  renderer.info.reset();
 
   // Time of day
   if (todTarget !== null) {
@@ -429,14 +602,21 @@ function frame() {
   }
   todSlider.value = Math.round(world.tod * 1000);
 
+  // Opening menu: the festival is the backdrop, with a slow look along the street.
+  if (!started) {
+    player.yaw = -Math.PI / 2 + Math.sin(elapsed * 0.08) * 0.35;
+    player.pitch = 0.04 + Math.sin(elapsed * 0.05) * 0.03;
+  }
   player.update(dt);
   world.update(dt, player.pos);
 
-  if (npcs) {
+  const festivalPaused = areaCulling && hunt?.area === 'town';
+  if (npcs && !festivalPaused) {
     npcs.update(dt, elapsed);
     for (const g of Object.values(games)) g.update(dt, elapsed);
     kimo.update(dt, elapsed);
   }
+  hunt?.update(dt, elapsed);
   fireworks.update(dt);
 
   // Camera: tween, minigame pose, or first-person
@@ -467,7 +647,7 @@ function frame() {
         nearest = it;
       }
     }
-    ui.prompt(nearest?.label);
+    ui.prompt(typeof nearest?.label === 'function' ? nearest.label() : nearest?.label);
   } else {
     nearest = null;
     ui.prompt(null);
@@ -482,7 +662,7 @@ function frame() {
   ambT -= dt;
   if (ambT <= 0) {
     ambT = 0.5;
-    const streetness = player.pos.x < 36 ? 1 - world.forest : 0;
+    const streetness = hunt?.area === 'town' ? 0.25 : player.pos.x < 36 ? 1 - world.forest : 0;
     setAmbience({ day: 1 - world.glow, night: world.night, crowd: streetness * (G.fireworksActive ? 1.4 : 1) });
     ui.clock(world.clockLabel());
   }
@@ -490,15 +670,6 @@ function frame() {
   if (npcs && mmT <= 0) {
     mmT = 0.1;
     drawMinimap(npcs);
-  }
-  if (G.debug) {
-    fpsAcc += dt;
-    fpsN++;
-    if (fpsAcc > 0.5) {
-      document.getElementById('fps').textContent = `${Math.round(fpsN / fpsAcc)} fps · ${renderer.info.render.triangles.toLocaleString()} tris · ${pixelRatio.toFixed(2)}x res`;
-      fpsAcc = 0;
-      fpsN = 0;
-    }
   }
 
   // Adaptive resolution: drop render scale when the frame rate sags, restore it when smooth.
@@ -519,6 +690,44 @@ function frame() {
   }
 
   composer.render();
+  cpuMs = performance.now() - t0;
+
+  const info = renderer.info.render;
+  if (sampler) {
+    sampler.n++;
+    sampler.calls += info.calls;
+    sampler.tris += info.triangles;
+    sampler.cpu += cpuMs;
+    sampler.dt += rawDt;
+    if (performance.now() > sampler.until) {
+      const s = sampler;
+      sampler = null;
+      s.resolve({ frames: s.n, fps: +(s.n / s.dt).toFixed(1), frameMs: +((s.dt / s.n) * 1000).toFixed(2), cpuMs: +(s.cpu / s.n).toFixed(2), drawCalls: Math.round(s.calls / s.n), triangles: Math.round(s.tris / s.n), area: hunt?.area, areaCulling, pixelRatio });
+    }
+  }
+  if (perfOn) {
+    fpsAcc += rawDt;
+    fpsN++;
+    if (fpsAcc > 0.5) {
+      const mem = renderer.info.memory;
+      const area = hunt?.area === 'town' ? `town · culling ${areaCulling ? 'on' : 'off'}` : 'festival';
+      document.getElementById('fps').textContent =
+        `${Math.round(fpsN / fpsAcc)} fps · ${((fpsAcc / fpsN) * 1000).toFixed(1)} ms/frame\n` +
+        `CPU ${cpuMs.toFixed(1)} ms · ${pixelRatio.toFixed(2)}x res\n` +
+        `draw calls ${info.calls} · tris ${info.triangles.toLocaleString()}\n` +
+        `geometries ${mem.geometries} · textures ${mem.textures}\n${area}`;
+      fpsAcc = 0;
+      fpsN = 0;
+    }
+  }
+  if (hunt && document.getElementById('dev').classList.contains('open')) {
+    const st = hunt.stats();
+    document.getElementById('pstats').textContent =
+      `Perception (${hunt.mode === 'fovlos' ? 'FOV+LOS' : 'radius'}) · samples ${st.senses}\n` +
+      `radius-only detections: ${st.radiusHits}\nFOV+LOS detections: ${st.fovLosHits}\n` +
+      `rejected (behind/blocked): ${st.falsePositivesAvoided}`;
+    document.getElementById('pstats').style.whiteSpace = 'pre';
+  }
 }
 
 boot();

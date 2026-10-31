@@ -312,7 +312,7 @@ export function makeCharacter({
 }
 
 // Pose targets are damped so transitions between animations blend smoothly.
-function animate(c, anim, speed, dt, t) {
+export function animate(c, anim, speed, dt, t) {
   const P = {
     uX: 0, uY: 0.85, uRY: 0, hX: 0, hY: 0,
     lX: 0, lZ: 0.08, rX: 0, rZ: -0.08,

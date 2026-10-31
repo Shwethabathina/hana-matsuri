@@ -22,22 +22,41 @@
       .hud { position: fixed; pointer-events: none; z-index: 5; }
       .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(6px); box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
 
-      #topleft { top: 14px; left: 14px; padding: 12px 14px; min-width: 250px; max-width: 290px; }
-      #topleft h1 { margin: 0 0 2px; font-size: 17px; letter-spacing: 0.5px; }
-      #topleft .jp { color: var(--accent2); font-size: 12px; margin-bottom: 8px; }
-      #clock { font-size: 13px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+      #topleft { top: 14px; left: 14px; padding: 9px 13px; min-width: 210px; max-width: 280px; pointer-events: auto; }
+      #topleft h1 { margin: 0; font-size: 15px; letter-spacing: 0.6px; font-weight: 700; }
+      #topleft .jp { color: var(--accent2); font-size: 11px; }
+      #clock { font-size: 12.5px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
+      #journal { display: none; }
+      #topleft.open #journal { display: block; }
+      #journal-toggle { font-size: 11px; color: var(--muted); margin-top: 4px; cursor: pointer; }
       #objectives { list-style: none; padding: 0; margin: 8px 0 0; font-size: 13px; line-height: 1.55; }
       #objectives li.done { color: var(--good); }
       #objectives li .p { color: var(--muted); font-size: 11px; }
       #patterns { font-size: 11.5px; color: var(--muted); margin-top: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
 
-      #controls { top: 14px; right: 14px; padding: 10px; display: flex; flex-direction: column; gap: 8px; align-items: stretch; pointer-events: auto; width: 214px; }
-      #minimap { width: 194px; height: 194px; border-radius: 8px; display: block; }
-      #controls button, .btn { pointer-events: auto; cursor: pointer; border: 1px solid var(--line); background: linear-gradient(180deg, #ff8a4a, #d9481f); color: #fff; font-weight: 700; padding: 8px 10px; border-radius: 8px; font-size: 13px; }
-      #controls button.ghost { background: rgba(255,255,255,0.08); font-weight: 600; }
-      #controls .row { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
-      #controls input[type=range] { flex: 1; accent-color: var(--accent); }
+      #mapcard { top: 14px; right: 14px; padding: 6px; }
+      #minimap { width: 180px; height: 180px; border-radius: 8px; display: block; }
+      #mapname { font-size: 11px; color: var(--muted); text-align: center; margin-top: 3px; }
 
+      #dev { right: 14px; bottom: 44px; padding: 10px; display: none; flex-direction: column; gap: 7px; pointer-events: auto; width: 270px; font-size: 12px; }
+      #dev.open { display: flex; }
+      #dev h3 { margin: 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent2); }
+      #dev button, .btn { pointer-events: auto; cursor: pointer; border: 1px solid var(--line); background: linear-gradient(180deg, #ff8a4a, #d9481f); color: #fff; font-weight: 700; padding: 7px 10px; border-radius: 8px; font-size: 12.5px; font-family: inherit; }
+      #dev button.ghost { background: rgba(255,255,255,0.08); font-weight: 600; }
+      #dev button.on { background: rgba(124,242,154,0.25); border-color: var(--good); }
+      #dev .row { display: flex; gap: 6px; align-items: center; color: var(--muted); }
+      #dev .row > button { flex: 1; }
+      #dev input[type=range] { flex: 1; accent-color: var(--accent); }
+      #dev .stat { color: var(--muted); font: 11px/1.4 ui-monospace, monospace; }
+      #gear { right: 14px; bottom: 10px; pointer-events: auto; cursor: pointer; font-size: 12px; padding: 4px 10px; color: var(--muted); }
+
+      #quest { left: 50%; top: 14px; transform: translateX(-50%); padding: 8px 16px 9px; display: none; text-align: center; min-width: 300px; max-width: min(560px, 70vw); }
+      #quest .qt { font-size: 10.5px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--accent2); }
+      #quest .qo { font-size: 15px; margin-top: 2px; }
+      #quest .qc { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+      #quest .pip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--accent2); margin: 0 2px; vertical-align: middle; }
+      #quest .pip.on { background: var(--accent2); }
+      #quest.done .qo { color: var(--good); }
       #prompt { left: 50%; bottom: 90px; transform: translateX(-50%); padding: 10px 16px; font-size: 15px; display: none; }
       #prompt kbd, .key { display: inline-block; background: #fff; color: #222; border-radius: 5px; padding: 1px 7px; font-weight: 800; margin-right: 6px; font-family: inherit; }
       #quest { left: 50%; top: 14px; transform: translateX(-50%); padding: 8px 14px; font-size: 14px; display: none; }
@@ -50,10 +69,18 @@
       #toasts { left: 50%; bottom: 140px; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; }
       .toast { padding: 8px 14px; font-size: 14px; animation: toast 3.2s forwards; }
       @keyframes toast { 0% { opacity: 0; transform: translateY(10px); } 8% { opacity: 1; transform: none; } 85% { opacity: 1; } 100% { opacity: 0; } }
-      #hint { left: 14px; bottom: 14px; padding: 8px 12px; font-size: 12px; color: var(--muted); max-width: 520px; }
-      #credit { right: 14px; bottom: 10px; font-size: 10.5px; color: rgba(255,255,255,0.55); max-width: 420px; text-align: right; }
+      #hint { left: 14px; bottom: 14px; padding: 6px 11px; font-size: 11.5px; color: var(--muted); max-width: 560px; }
+      #credit { left: 50%; transform: translateX(-50%); bottom: 4px; font-size: 9.5px; color: rgba(255,255,255,0.45); width: min(760px, 94vw); text-align: center; display: none; z-index: 31; pointer-events: auto; }
+      body.menu #credit { display: block; }
+      body.menu .hud:not(#credit) { visibility: hidden; }
       #credit a { color: inherit; }
-      #fps { right: 240px; top: 14px; font: 12px monospace; color: #9fe; display: none; }
+      #fps { right: 208px; top: 14px; font: 11.5px/1.45 ui-monospace, monospace; color: #bff; display: none; padding: 6px 9px; background: rgba(0,0,0,0.55); border-radius: 8px; white-space: pre; }
+      #fade { position: fixed; inset: 0; z-index: 25; background: #07040a; opacity: 0; pointer-events: none; transition: opacity 0.35s; }
+      #fade.on { opacity: 1; }
+      .dlg-name { font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--accent2); }
+      .dlg-text { font-size: 16px; }
+      .choices { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+      .choices:empty { display: none; }
 
       #flash { position: fixed; inset: 0; z-index: 20; pointer-events: none; opacity: 0; background: radial-gradient(circle, rgba(255,255,255,0.9), rgba(160,0,0,0.85)); }
       #flash.on { animation: flash 0.9s ease-out; }
@@ -65,93 +92,120 @@
       .modal h2 { margin: 0 0 8px; }
       .modal p { line-height: 1.5; margin: 8px 0; }
       .muted { color: var(--muted); font-size: 13px; }
-      #start .modal { width: min(680px, 94vw); text-align: center; }
-      #start h1 { font-size: 34px; margin: 0; letter-spacing: 1px; }
-      #start .jp { color: var(--accent2); font-size: 18px; margin: 4px 0 14px; }
-      #start .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px 16px; text-align: left; font-size: 13px; margin: 14px 0; }
-      #progress { height: 8px; background: rgba(255,255,255,0.12); border-radius: 6px; overflow: hidden; margin: 14px 0 6px; }
+      #start { background: linear-gradient(90deg, rgba(8,4,14,0.8) 0%, rgba(8,4,14,0.4) 42%, rgba(8,4,14,0) 70%); place-items: center start; transition: opacity 0.6s; }
+      #start.fading { opacity: 0; }
+      #menu { margin-left: clamp(24px, 8vw, 120px); width: min(380px, 86vw); }
+      #menu h1 { font-size: clamp(38px, 5vw, 56px); margin: 0; font-weight: 300; letter-spacing: 3px; font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif; text-shadow: 0 4px 30px rgba(0,0,0,0.6); }
+      #menu .jp { color: var(--accent2); font-size: 15px; letter-spacing: 4px; margin: 2px 0 26px; opacity: 0.9; }
+      .menu-list { display: flex; flex-direction: column; gap: 4px; }
+      .menu-list button { all: unset; cursor: pointer; font-size: 18px; padding: 8px 12px; border-left: 2px solid transparent; color: var(--ink); transition: border-color 0.2s, background 0.2s, padding 0.2s; border-radius: 0 6px 6px 0; }
+      .menu-list button:hover:not(:disabled), .menu-list button:focus-visible { border-left-color: var(--accent2); background: rgba(255,255,255,0.07); padding-left: 18px; }
+      .menu-list button:disabled { opacity: 0.4; cursor: wait; }
+      .menu-list .sub { display: block; font-size: 11.5px; color: var(--muted); }
+      #menu-page { display: none; margin-top: 14px; padding: 14px 16px; font-size: 13px; }
+      #menu-page.open { display: block; }
+      #menu-page .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 14px; text-align: left; }
+      #menu-page label { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; gap: 10px; }
+      #progress { height: 3px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; margin: 22px 0 6px; width: 220px; }
       #progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.2s; }
-      #loadtext { font-size: 12px; color: var(--muted); min-height: 16px; }
-      #enter { font-size: 17px; padding: 12px 26px; margin-top: 12px; }
-      #enter:disabled { opacity: 0.45; cursor: wait; }
-      .pillars { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 10px; }
-      .pillars span { font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; color: var(--muted); }
+      #loadtext { font-size: 11.5px; color: var(--muted); min-height: 16px; }
       .fortune { font-size: 64px; text-align: center; margin: 6px 0; color: var(--accent2); font-family: "Yu Mincho", serif; }
       @media (max-width: 760px) {
-        #controls { width: 150px; }
-        #minimap { width: 130px; height: 130px; }
+        #minimap { width: 120px; height: 120px; }
+        #menu-page .grid { grid-template-columns: 1fr; }
         #topleft { max-width: 200px; min-width: 0; }
         #hint { display: none; }
       }
     </style>
   </head>
-  <body>
+  <body class="menu">
     <canvas id="c"></canvas>
 
     <div id="topleft" class="hud card">
-      <h1>Hana Matsuri</h1>
-      <div class="jp">花祭り · Festival After Dusk</div>
+      <h1>Hana Matsuri <span class="jp">花祭り</span></h1>
       <div id="clock"><span id="clocktext">16:30 · Afternoon</span><span id="coins">¥3000</span></div>
-      <ul id="objectives"></ul>
-      <div id="patterns"></div>
+      <div id="journal">
+        <ul id="objectives"></ul>
+        <div id="patterns"></div>
+      </div>
+      <div id="journal-toggle"><span class="key" style="font-size:10px;padding:0 5px">J</span>Festival journal</div>
     </div>
 
-    <div id="controls" class="hud card">
+    <div id="mapcard" class="hud card">
       <canvas id="minimap" width="388" height="388"></canvas>
-      <div class="row">🌇<input id="tod" type="range" min="0" max="1000" value="0" />🌙</div>
-      <div class="row"><button id="btn-auto" class="ghost" style="flex:1">⏵ Auto time: on</button></div>
-      <button id="btn-fw">🎆 Launch Fireworks (F)</button>
-      <div class="row">
-        <button id="btn-debug" class="ghost" style="flex:1">AI debug (N)</button>
-        <button id="btn-quality" class="ghost" style="flex:1">High (G)</button>
-      </div>
+      <div id="mapname">Festival street</div>
     </div>
+
+    <div id="dev" class="hud card">
+      <h3>Developer panel</h3>
+      <div class="row">🌇<input id="tod" type="range" min="0" max="1000" value="0" />🌙</div>
+      <div class="row"><button id="btn-auto" class="ghost">⏵ Auto time: on</button><button id="btn-fw">🎆 Fireworks (F)</button></div>
+      <div class="row"><button id="btn-debug" class="ghost">AI debug (N)</button><button id="btn-quality" class="ghost">High (G)</button></div>
+      <div class="row"><button id="btn-perf" class="ghost">Perf stats (Y)</button><button id="btn-cull" class="ghost on">Area culling: on</button></div>
+      <div class="row"><button id="btn-pdebug" class="ghost">Vision debug (P)</button><button id="btn-pmode" class="ghost">Vision: FOV+LOS (O)</button></div>
+      <div class="row"><button id="btn-tp" class="ghost">Go to town</button><button id="btn-tp2" class="ghost">Go to festival</button></div>
+      <div id="pstats" class="stat"></div>
+    </div>
+    <div id="gear" class="hud card">⚙ Developer ( ` )</div>
 
     <div id="quest" class="hud card"></div>
     <div id="gamehud" class="hud card"></div>
     <div id="prompt" class="hud card"></div>
     <div id="toasts" class="hud"></div>
     <div id="hint" class="hud card">
-      <b>WASD</b> move · <b>Shift</b> run · <b>Mouse</b>/<b>Arrows</b> look (click to lock) · <b>E</b> interact ·
-      <b>T</b> day→dusk→night · <b>F</b> fireworks · <b>N</b> AI/nav debug · <b>H</b> help
-    </div>
-    <div id="credit" class="hud">
-      Festival street: <a href="https://sketchfab.com/3d-models/summer-festival-of-japan-yataimura-f68b39782b0e45a18c8d4f6c45831576" target="_blank">"Summer festival of Japan 'Yataimura'"</a>
-      by <a href="https://sketchfab.com/seirogan" target="_blank">seirogan</a>, CC-BY-4.0 ·
-      Goldfish: <a href="https://sketchfab.com/3d-models/goldfish-variety-3-851c92634c014949ae78c4b52807584f" target="_blank">"Goldfish_Variety 3"</a> by <a href="https://sketchfab.com/picasty" target="_blank">Picasty</a>, CC-BY-4.0 ·
-      Sakura: <a href="https://sketchfab.com/3d-models/sakura-tree-01-low-poly-model-147ae7d0d332456a99ec6195e9b0cd4f" target="_blank">"Sakura Tree 01"</a> by <a href="https://sketchfab.com/thejogoss9" target="_blank">Jogoss</a>, CC-BY-4.0 ·
-      Forest: <a href="https://sketchfab.com/3d-models/a-forest-3-with-a-road-at-night-for-game-61f8c7817fe6457fb26e4814cfc48a3f" target="_blank">"a forest (3)"</a> by <a href="https://sketchfab.com/dasy444" target="_blank">dasy444</a>, CC-BY-4.0
+      <b>WASD</b> move · <b>Shift</b> run · <b>Mouse</b> look · <b>E</b> interact · <b>J</b> journal · <b>H</b> help · <b>Esc</b> leave game
     </div>
     <div id="fps" class="hud"></div>
     <div id="flash"></div>
+    <div id="fade"></div>
 
     <div id="start" class="overlay">
-      <div class="modal card">
+      <div id="menu">
         <h1>Hana Matsuri</h1>
-        <div class="jp">花祭り — Festival After Dusk</div>
-        <p class="muted">CS549 · AI for Visual Computing · interactive prototype</p>
-        <div class="grid">
-          <div>🚶 <b>WASD</b> walk, <b>Shift</b> run</div>
-          <div>🖱️ <b>Mouse</b> / <b>Arrow keys</b> look</div>
-          <div>✋ <b>E</b> interact with stalls & games</div>
-          <div>🌙 <b>T</b> day → dusk → night</div>
-          <div>🎆 <b>F</b> launch fireworks</div>
-          <div>🧠 <b>N</b> show NPC behaviour trees & nav grid</div>
-          <div>🎮 <b>Esc</b> leave a minigame</div>
-          <div>⚙️ <b>G</b> toggle graphics quality</div>
+        <div class="jp">花祭り · 夜の祭り</div>
+        <div class="menu-list">
+          <button id="enter" disabled>Start Game<span class="sub">Walk the festival street after dusk</span></button>
+          <button id="enter-town" disabled>Town Treasure Hunt<span class="sub">Find the missing festival heirloom</span></button>
+          <button id="btn-howto">How to Play</button>
+          <button id="btn-settings">Settings</button>
         </div>
-        <p class="muted">Play: 🐟 Goldfish scooping · 🎯 Shooting gallery · 🥁 Taiko rhythm · 👻 Kimodameshi · 🙏 Shrine & omikuji · 🍢 Food stalls — then watch the finale.</p>
+        <div id="menu-page" class="card"></div>
         <div id="progress"><span></span></div>
-        <div id="loadtext">Loading festival…</div>
-        <button id="enter" class="btn" disabled>Enter the festival</button>
-        <div class="pillars"><span>Rendering</span><span>Animation</span><span>Physics</span><span>Collision</span><span>Pathfinding</span><span>NPC Behaviour Trees</span></div>
+        <div id="loadtext">Loading…</div>
+        <template id="howto">
+          <div class="grid">
+            <div><b>WASD</b> walk · <b>Shift</b> run</div>
+            <div><b>Mouse</b> / <b>Arrows</b> look</div>
+            <div><b>E</b> talk · examine · play</div>
+            <div><b>Esc</b> leave a minigame</div>
+            <div><b>T</b> dusk → night</div>
+            <div><b>F</b> fireworks</div>
+            <div><b>J</b> festival journal</div>
+            <div><b>`</b> developer panel</div>
+          </div>
+          <p class="muted">Play goldfish scooping, the shooting gallery, taiko and the test of courage. Through the small torii on the game plaza, the Old Town hides a short treasure hunt — villagers only notice you when they can actually see you.</p>
+        </template>
+        <template id="settings">
+          <label>Graphics quality <button id="set-quality" class="btn">High</button></label>
+          <label>Performance overlay <button id="set-perf" class="btn">Off</button></label>
+          <label>Automatic time of day <button id="set-auto" class="btn">On</button></label>
+        </template>
       </div>
+    </div>
+
+    <div id="credit" class="hud">
+      Festival street: <a href="https://sketchfab.com/3d-models/summer-festival-of-japan-yataimura-f68b39782b0e45a18c8d4f6c45831576" target="_blank">"Summer festival of Japan 'Yataimura'"</a> by seirogan ·
+      Town: "Japaneses Town" by Pasha ·
+      Goldfish: <a href="https://sketchfab.com/3d-models/goldfish-variety-3-851c92634c014949ae78c4b52807584f" target="_blank">"Goldfish_Variety 3"</a> by Picasty ·
+      Sakura: <a href="https://sketchfab.com/3d-models/sakura-tree-01-low-poly-model-147ae7d0d332456a99ec6195e9b0cd4f" target="_blank">"Sakura Tree 01"</a> by Jogoss ·
+      Forest: <a href="https://sketchfab.com/3d-models/a-forest-3-with-a-road-at-night-for-game-61f8c7817fe6457fb26e4814cfc48a3f" target="_blank">"a forest (3)"</a> by dasy444 — all Sketchfab, CC-BY-4.0
     </div>
 
     <div id="panel" class="overlay hidden">
       <div class="modal card">
         <div id="panel-body"></div>
         <button id="panel-btn" class="btn">Continue</button>
+        <div id="panel-choices" class="choices"></div>
       </div>
     </div>
 

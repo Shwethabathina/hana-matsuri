@@ -52,8 +52,53 @@ export function createUI() {
     panel(html, cb, btn = 'Continue') {
       $('panel-body').innerHTML = html;
       $('panel-btn').textContent = btn;
+      $('panel-btn').style.display = '';
+      $('panel-choices').innerHTML = '';
       $('panel').classList.remove('hidden');
       panelCb = cb;
+    },
+    // Panel with several choices (e.g. quest completion: restart / return).
+    complete(html, choices) {
+      $('panel-body').innerHTML = html;
+      $('panel-btn').style.display = 'none';
+      const box = $('panel-choices');
+      box.innerHTML = '';
+      for (const [label, fn] of choices) {
+        const b = document.createElement('button');
+        b.className = 'btn';
+        b.textContent = label;
+        b.addEventListener('click', () => {
+          $('panel').classList.add('hidden');
+          box.innerHTML = '';
+          fn();
+        });
+        box.appendChild(b);
+      }
+      $('panel').classList.remove('hidden');
+    },
+    questHud(q) {
+      const el = $('quest');
+      if (!q) {
+        el.style.display = 'none';
+        return;
+      }
+      el.style.display = 'block';
+      el.classList.toggle('done', !!q.done);
+      const pips = [0, 1].map((i) => `<span class="pip ${i < q.clues ? 'on' : ''}"></span>`).join('');
+      el.innerHTML = `<div class="qt">${q.title}</div><div class="qo">${q.done ? '✔ ' : ''}${q.objective}</div>` +
+        `<div class="qc">Clues ${pips} ${q.clues}/2${q.bell ? ' · 🔔 Kagura Bell in hand' : ''}</div>`;
+    },
+    // Short fade-to-black used for area transitions.
+    fade(mid) {
+      const f = $('fade');
+      f.classList.add('on');
+      setTimeout(() => {
+        mid();
+        setTimeout(() => f.classList.remove('on'), 120);
+      }, 380);
+    },
+    toggleJournal() {
+      $('topleft').classList.toggle('open');
     },
     get panelOpen() {
       return !$('panel').classList.contains('hidden');
