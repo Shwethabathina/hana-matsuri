@@ -262,24 +262,33 @@ export class Town {
     const start = sj * g.w + si;
     prev[start] = start;
     const q = [start];
+    const free = (i, j) => i >= 0 && j >= 0 && i < g.w && j < g.h && !g.blocked[j * g.w + i];
+    // If the goal cell itself is blocked (e.g. a prop on a wall), end at the closest reachable cell.
+    let best = start;
+    let bestD = Infinity;
     for (let h = 0; h < q.length; h++) {
       const k = q[h];
-      if (k === tj * g.w + ti) break;
       const i = k % g.w;
       const j = (k - i) / g.w;
+      const dd = (i - ti) ** 2 + (j - tj) ** 2;
+      if (dd < bestD) {
+        bestD = dd;
+        best = k;
+      }
+      if (dd === 0) break;
       for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
         const ni = i + di;
         const nj = j + dj;
-        if (ni < 0 || nj < 0 || ni >= g.w || nj >= g.h) continue;
+        if (!free(ni, nj)) continue;
+        if (di && dj && (!free(i + di, j) || !free(i, j + dj))) continue; // no cutting wall corners
         const nk = nj * g.w + ni;
-        if (prev[nk] !== -1 || g.blocked[nk]) continue;
+        if (prev[nk] !== -1) continue;
         prev[nk] = k;
         q.push(nk);
       }
     }
     const out = [];
-    let k = tj * g.w + ti;
-    if (prev[k] === -1) return [[ax, az], [bx, bz]];
+    let k = best;
     while (k !== start) {
       const i = k % g.w;
       out.push([LOCAL.minX + (i + 0.5) * CELL, LOCAL.minZ + ((k - i) / g.w + 0.5) * CELL]);

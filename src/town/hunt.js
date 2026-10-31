@@ -16,7 +16,7 @@ const VILLAGERS = [
     gender: 'm', yukata: ['#5a3a2a', '#c9b48a'], obi: '#222222', greet: 'Welcome! Fresh dango today!', anim: 'cook',
   },
   {
-    key: 'child', name: 'Yuki', role: 'Village child', at: [2.5, -9.5], heading: Math.PI, scan: 0.9, range: 7,
+    key: 'child', name: 'Yuki', role: 'Village child', at: [2.6, -7.2], heading: Math.PI, scan: 0.9, range: 7,
     gender: 'f', yukata: ['#e86a92', '#ffffff'], obi: '#ffffff', child: true, greet: 'Hi! Are you an adventurer?',
   },
 ];
@@ -54,7 +54,7 @@ export class TreasureHunt {
     }
     const Q = this.quest;
     const clue = (id, key, label, state, run) =>
-      this.world.interactables.push({ id, pos: Q.worldPoint(key), radius: 1.7, label, enabled: () => inTown() && Q.state === state, action: run });
+      this.world.interactables.push({ id, pos: Q.worldPoint(key), radius: 1.8, priority: true, label, enabled: () => inTown() && Q.state === state, action: run });
     clue('clue-cart', 'cart', 'Examine the festival cart', S.FIND_CORD, () => {
       sfx.chime();
       this.dialog([['Clue 1 of 2 — the festival cart', 'The bell stand is empty. A torn <b style="color:#ff6b5a">red-and-white cord</b> hangs from it, and a few <b>pink-and-white crumbs</b> are scattered on the cart. Someone was snacking here…']], () =>
@@ -190,6 +190,7 @@ export class TreasureHunt {
     const P = this.player;
     P.bounds = this.town.bounds;
     P.groundAt = (x, z) => this.town.heightAt(x, z);
+    P.slide = true;
     P.vel.set(0, 0, 0);
     P.place(townSpawn(), 0);
     P.pitch = -0.05;
@@ -215,6 +216,7 @@ export class TreasureHunt {
       this.area = 'festival';
       P.bounds = undefined;
       P.groundAt = null;
+      P.slide = false;
       P.vel.set(0, 0, 0);
       P.place(new THREE.Vector3(12.2, 0, 1.2), -Math.PI / 2);
       this.onArea?.('festival');
@@ -290,15 +292,40 @@ export class TreasureHunt {
       this.beacon.scale.set(s, s, 1);
       this.beacon.position.set(tg.x, this.town.heightAt(tg.x, tg.z) + 2.7 + Math.sin(t * 2.5) * 0.12, tg.z);
       this.beacon.material.opacity = d < 2.5 ? 0.35 : 1;
-      // Angle of the target relative to where the player looks (0 = straight ahead, + = to the right).
+      // Route along walkable streets (not a straight line through buildings), refreshed 4x per second.
+      this.routeT = (this.routeT || 0) - dt;
+      if (this.routeT <= 0) {
+        this.routeT = 0.25;
+        const o = this.town.root.position;
+        this.route = this.town.findPath([p.pos.x - o.x, p.pos.z - o.z], [tg.x - o.x, tg.z - o.z]).map(([x, z]) => [x + o.x, z + o.z]);
+      }
+      // Steer towards a point ~2.5 m ahead along the route; distance = remaining walking distance.
+      let wx = tg.x;
+      let wz = tg.z;
+      let walk = 0;
+      let px = p.pos.x;
+      let pz = p.pos.z;
+      let picked = false;
+      for (const [x, z] of this.route || []) {
+        walk += Math.hypot(x - px, z - pz);
+        px = x;
+        pz = z;
+        if (!picked && walk >= 2.5) {
+          wx = x;
+          wz = z;
+          picked = true;
+        }
+      }
+      if (!this.route?.length) walk = d;
       const f = p.forward;
-      const dx = (tg.x - p.pos.x) / (d || 1);
-      const dz = (tg.z - p.pos.z) / (d || 1);
+      const wd = Math.hypot(wx - p.pos.x, wz - p.pos.z) || 1;
+      const dx = (wx - p.pos.x) / wd;
+      const dz = (wz - p.pos.z) / wd;
       const ang = Math.atan2(f.x * dz - f.z * dx, f.x * dx + f.z * dz);
       this.dirT = (this.dirT || 0) - dt;
       if (this.dirT <= 0) {
         this.dirT = 0.1; // HUD text at 10 Hz is plenty and avoids per-frame DOM work
-        this.ui.questDir(ang, d);
+        this.ui.questDir(ang, d < 2.5 ? d : Math.max(d, walk));
       }
     } else {
       this.ui.questDir(null);

@@ -20,6 +20,8 @@ export class Player {
     this.shake = 0;
     this.lastStep = 0;
     this.bounds = undefined; // collision bounds override (undefined = festival bounds)
+    this.slide = false; // axis-separated sliding movement (used in the town)
+    this.slideRadius = 0.22;
     this.groundAt = null; // optional (x, z) => ground height, used on the town's raised stone floors
 
     addEventListener('keydown', (e) => this.keys.add(e.code));
@@ -71,8 +73,19 @@ export class Player {
     } else {
       this.vel.multiplyScalar(Math.exp(-10 * dt));
     }
-    this.pos.addScaledVector(this.vel, dt);
-    this.colliders.resolve(this.pos, this.radius, this.bounds);
+    if (this.slide) {
+      // Town: move each axis separately and only where free, so the player glides along the
+      // blocky collision grid instead of snagging on cell corners.
+      const r = this.slideRadius;
+      const nx = this.pos.x + this.vel.x * dt;
+      if (!this.colliders.blocked(nx, this.pos.z, r, this.bounds)) this.pos.x = nx;
+      const nz = this.pos.z + this.vel.z * dt;
+      if (!this.colliders.blocked(this.pos.x, nz, r, this.bounds)) this.pos.z = nz;
+      if (this.colliders.blocked(this.pos.x, this.pos.z, r, this.bounds)) this.colliders.resolve(this.pos, r, this.bounds);
+    } else {
+      this.pos.addScaledVector(this.vel, dt);
+      this.colliders.resolve(this.pos, this.radius, this.bounds);
+    }
     const gy = this.groundAt ? this.groundAt(this.pos.x, this.pos.z) : 0;
     this.pos.y += (gy - this.pos.y) * (1 - Math.exp(-14 * dt)); // smooth steps onto raised floors
 

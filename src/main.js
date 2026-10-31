@@ -367,6 +367,17 @@ function drawTownMinimap() {
     mm.fill();
   }
   const tg = hunt.target();
+  // Walking route to the goal (dotted gold line).
+  if (tg && hunt.route?.length) {
+    mm.strokeStyle = 'rgba(255,210,74,0.9)';
+    mm.lineWidth = 4;
+    mm.setLineDash([6, 6]);
+    mm.beginPath();
+    mm.moveTo(tx(player.pos.x), tz(player.pos.z));
+    for (const [x, z] of hunt.route) mm.lineTo(tx(x), tz(z));
+    mm.stroke();
+    mm.setLineDash([]);
+  }
   if (tg) {
     mm.fillStyle = '#ffd24a';
     mm.strokeStyle = '#4a2a08';
@@ -655,8 +666,9 @@ function frame() {
     for (const it of world.interactables) {
       if (!it.enabled()) continue;
       const d = Math.hypot(it.pos.x - player.pos.x, it.pos.z - player.pos.z);
-      if (d < it.radius && d < best) {
-        best = d;
+      const score = it.priority ? d * 0.4 : d; // quest clues win over a bystander standing next to them
+      if (d < it.radius && score < best) {
+        best = score;
         nearest = it;
       }
     }

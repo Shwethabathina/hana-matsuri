@@ -80,8 +80,8 @@ export class Colliders {
     pos.z = clamp(pos.z, B.minZ + r, B.maxZ - r);
   }
 
-  blocked(x, z, r) {
-    const B = this.bounds;
+  blocked(x, z, r, bounds = this.bounds) {
+    const B = bounds;
     if (x < B.minX + r || x > B.maxX - r || z < B.minZ + r || z > B.maxZ - r) return true;
     for (const b of this.boxes) {
       const cx = clamp(x, b.minX, b.maxX);
