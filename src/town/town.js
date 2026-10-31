@@ -15,7 +15,7 @@ const WALK_RADIUS = 20; // walkable disc radius (local)
 // Material groups (names come from the source SketchUp export).
 const GROUND = /^(tuti22|tuti3|yuka2|yuka3|ring8|material_0)$/;
 const FOLIAGE = /^(ki\d+|mori7)$/;
-const HIDDEN = /^(sora00|sun|material_27|enkei)$/; // the model's sky dome and painted backdrop: the festival sky (and day/night) replaces them
+const HIDDEN = /^(sora00|sun|material_27|enkei|hito)$/; // sky dome, painted backdrop and flat cardboard people: the festival sky and 3D villagers replace them
 const NON_SOLID = /^(hito|enkei)$/; // people cut-outs and the distant backdrop
 
 export class Town {
@@ -58,7 +58,9 @@ export class Town {
     this.world.scene.add(this.root);
     this.root.updateMatrixWorld(true);
 
-    const lambertCache = new Map();
+    const matCache = new Map();
+    const aniso = this.world.renderer.capabilities.getMaxAnisotropy();
+    this.foliage = [];
     model.traverse((o) => {
       if (!o.isMesh) return;
       const name = o.material.name;
@@ -66,26 +68,37 @@ export class Town {
         o.visible = false;
         return;
       }
-      // The export is unlit (KHR_materials_unlit). Lambert keeps its textures but lets the
-      // town follow the festival's sun, lanterns and afternoon-to-night cycle.
-      if (!lambertCache.has(o.material)) {
+      const kind = GROUND.test(name) ? 'ground' : FOLIAGE.test(name) ? 'foliage' : NON_SOLID.test(name) ? 'decor' : 'solid';
+      // The export is unlit (KHR_materials_unlit). A physically based material keeps its textures
+      // but lets the town follow the festival's sun, sky light, lanterns and day/night cycle.
+      if (!matCache.has(o.material)) {
         const src = o.material;
         const alpha = src.transparent || src.alphaTest > 0;
-        lambertCache.set(src, new THREE.MeshLambertMaterial({
+        if (src.map) {
+          src.map.anisotropy = aniso; // keeps walls and paving sharp at grazing angles
+          src.map.needsUpdate = true;
+        }
+        const mat = new THREE.MeshStandardMaterial({
           name,
           map: src.map,
           color: src.color,
           vertexColors: src.vertexColors,
+          roughness: kind === 'ground' ? 0.95 : kind === 'foliage' ? 0.8 : 0.88,
+          metalness: 0,
           side: alpha ? THREE.DoubleSide : src.side,
           alphaTest: alpha ? 0.5 : 0,
+          alphaToCoverage: alpha, // smooth cut-out edges with the composer's MSAA
           transparent: false,
-        }));
+        });
+        addSurfaceDetail(mat, kind);
+        matCache.set(src, mat);
       }
-      o.material = lambertCache.get(o.material);
+      o.material = matCache.get(o.material);
       o.receiveShadow = true;
-      o.castShadow = !GROUND.test(name) && !NON_SOLID.test(name);
-      o.userData.townKind = GROUND.test(name) ? 'ground' : FOLIAGE.test(name) ? 'foliage' : NON_SOLID.test(name) ? 'decor' : 'solid';
-      if (o.userData.townKind === 'solid') this.occluders.push(o);
+      o.castShadow = kind === 'solid' || kind === 'foliage';
+      o.userData.townKind = kind;
+      if (kind === 'solid') this.occluders.push(o);
+      if (kind === 'foliage') this.foliage.push(o);
     });
 
     this.buildGrids(model);
@@ -256,6 +269,37 @@ export class Town {
   buildLights() {
     // Lantern light sources for the night (picked up by the festival's nearest-4 light pool).
     for (const [x, z] of [[0.5, 1], [0.5, 12], [1.5, -12], [-6, -4]]) this.world.addLight(this.toWorld(x, z, 3), { base: 8, distance: 14 });
+    // Hanging paper chōchin lanterns along the courtyard and the north road; they glow after dusk.
+    const paper = new THREE.MeshStandardMaterial({ color: '#d8402c', roughness: 0.7, emissive: '#ff7a3a', emissiveIntensity: 0 });
+    this.world.registerGlow(paper, 0, 2.2);
+    const cap = new THREE.MeshStandardMaterial({ color: '#1e1410', roughness: 0.6 });
+    const body = new THREE.SphereGeometry(0.2, 14, 10).scale(1, 1.35, 1);
+    const capGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.05, 12);
+    const postMat = new THREE.MeshStandardMaterial({ color: '#4a3424', roughness: 0.9 });
+    const postGeo = new THREE.CylinderGeometry(0.045, 0.06, 3.0, 8);
+    const armGeo = new THREE.BoxGeometry(0.42, 0.05, 0.05);
+    const cordGeo = new THREE.CylinderGeometry(0.008, 0.008, 0.3, 4);
+    const spots = [[-2.2, -1.8], [-2.2, 2.4], [3.2, -2.2], [3.2, 2.0], [0.5, -2.9], [-0.4, 5.2], [1.4, 8.4], [0.2, 10.2], [1.4, -6.2], [1.4, -9.0], [3.6, -12.0]];
+    for (const [x, z] of spots) {
+      const w = this.toWorld(x, z);
+      const y = this.heightAt(w.x, w.z) + 2.35;
+      const g = new THREE.Group();
+      const b = new THREE.Mesh(body, paper);
+      const top = new THREE.Mesh(capGeo, cap);
+      top.position.y = 0.28;
+      const bot = top.clone();
+      bot.position.y = -0.28;
+      // A wooden post with a short arm and cord holds each lantern.
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.set(0.38, -0.85, 0); // ground is 2.35 m below the lantern; post top at +0.65
+      const arm = new THREE.Mesh(armGeo, postMat);
+      arm.position.set(0.19, 0.62, 0);
+      const cord = new THREE.Mesh(cordGeo, cap);
+      cord.position.y = 0.45;
+      g.add(b, top, bot, post, arm, cord);
+      g.position.set(w.x, y, w.z);
+      this.world.scene.add(g);
+    }
   }
 
   buildMinimapImage() {
@@ -289,4 +333,30 @@ export function glintTexture() {
     g.fillRect(0, 0, 64, 64);
   });
   return glintTex;
+}
+
+// Fine surface detail for the low-resolution source textures: world-space value noise varies albedo and
+// roughness (weathering, grain), and wall bases are darkened where they meet the ground (contact shadow).
+function addSurfaceDetail(mat, kind) {
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vTownPos;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvTownPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vTownPos;
+float tHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float tNoise(vec3 x) {
+  vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(tHash(i), tHash(i + vec3(1,0,0)), f.x), mix(tHash(i + vec3(0,1,0)), tHash(i + vec3(1,1,0)), f.x), f.y),
+             mix(mix(tHash(i + vec3(0,0,1)), tHash(i + vec3(1,0,1)), f.x), mix(tHash(i + vec3(0,1,1)), tHash(i + vec3(1,1,1)), f.x), f.y), f.z);
+}`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+float tDetail = tNoise(vTownPos * 0.6) * 0.5 + tNoise(vTownPos * 3.1) * 0.3 + tNoise(vTownPos * 11.0) * 0.2;
+diffuseColor.rgb *= mix(${kind === 'ground' ? '0.8, 1.12' : kind === 'foliage' ? '0.85, 1.1' : '0.84, 1.08'}, tDetail);
+${kind === 'solid' ? 'diffuseColor.rgb *= mix(0.62, 1.0, smoothstep(0.0, 1.1, vTownPos.y));' : ''}`)
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+roughnessFactor = clamp(roughnessFactor + (tDetail - 0.5) * 0.25, 0.4, 1.0);`);
+  };
+  mat.customProgramCacheKey = () => `town-${kind}`;
 }

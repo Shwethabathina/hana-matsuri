@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { glintTexture } from './town.js';
+import { canvasTexture } from '../util.js';
 
 // "The Missing Festival Heirloom" — one short treasure hunt.
 // QuestState is the single authority over progress: every action goes through advance(from, to),
@@ -80,7 +81,25 @@ export class HeirloomQuest {
 
     // Clue 1: the festival cart the bell was taken from, with a torn red-and-white cord.
     const cart = new THREE.Group();
-    const wood = new THREE.MeshStandardMaterial({ color: '#7a5634', roughness: 0.85 });
+    // Weathered wood grain (procedural) so the cart sits with the town's textured surfaces.
+    const grain = canvasTexture(256, 256, (g) => {
+      g.fillStyle = '#7a5634';
+      g.fillRect(0, 0, 256, 256);
+      for (let i = 0; i < 90; i++) {
+        const y = Math.random() * 256;
+        g.strokeStyle = `rgba(${Math.random() < 0.5 ? '40,24,12' : '160,120,80'},${0.15 + Math.random() * 0.25})`;
+        g.lineWidth = 0.5 + Math.random() * 2;
+        g.beginPath();
+        g.moveTo(0, y);
+        g.bezierCurveTo(85, y + (Math.random() - 0.5) * 8, 170, y + (Math.random() - 0.5) * 8, 256, y + (Math.random() - 0.5) * 6);
+        g.stroke();
+      }
+      for (let x = 0; x < 256; x += 64) {
+        g.fillStyle = 'rgba(20,10,4,0.55)';
+        g.fillRect(0, x, 256, 2); // plank seams
+      }
+    });
+    const wood = new THREE.MeshStandardMaterial({ map: grain, roughness: 0.9 });
     const bed = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 0.9), wood);
     bed.position.y = 0.62;
     const rail = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.25, 0.05), wood);

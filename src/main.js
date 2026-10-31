@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { World } from './world.js';
 import { Player, EYE } from './player.js';
 import { NavGrid } from './nav.js';
@@ -48,6 +49,31 @@ scene.add(camera);
 // 4x MSAA on the post-processing target gives smooth edges (the canvas' own antialias does not apply here).
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
+// Ground-truth ambient occlusion, used only in the Old Town (small scene once the festival is culled):
+// it gives the low-poly buildings soft contact shadows in corners, under eaves and along walls.
+const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+gtao.enabled = false;
+gtao.blendIntensity = 0.9;
+gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.5, thickness: 1.5, scale: 1.0, samples: 12 });
+{
+  // Alpha-tested foliage cards and sprites would occlude as solid quads: hide them from the normal pass.
+  const hideExtra = [];
+  const over = gtao._overrideVisibility.bind(gtao);
+  const restore = gtao._restoreVisibility.bind(gtao);
+  gtao._overrideVisibility = () => {
+    over();
+    scene.traverseVisible((o) => {
+      if (o.isSprite || o.material?.alphaTest > 0 || o.material?.transparent) hideExtra.push(o);
+    });
+    for (const o of hideExtra) o.visible = false;
+  };
+  gtao._restoreVisibility = () => {
+    for (const o of hideExtra) o.visible = true;
+    hideExtra.length = 0;
+    restore();
+  };
+}
+composer.addPass(gtao);
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.4, 0.55, 0.9);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -689,6 +715,7 @@ function frame() {
     }
   }
 
+  gtao.enabled = quality === 'high' && areaCulling && hunt?.area === 'town';
   composer.render();
   cpuMs = performance.now() - t0;
 
