@@ -735,7 +735,7 @@ function frame() {
   skyU.mieCoefficient.value = inTown ? 0.0015 : 0.005;
   skyU.mieDirectionalG.value = inTown ? 0.9 : 0.8;
   if (inTown) renderer.toneMappingExposure *= 0.82;
-  bloom.strength = lerp(0.15, 0.55, world.glow) * (inTown ? 0.45 : 1);
+  bloom.strength = lerp(0.15, 0.38, world.glow) * (inTown ? 0.45 : 1);
   ambT -= dt;
   if (ambT <= 0) {
     ambT = 0.5;

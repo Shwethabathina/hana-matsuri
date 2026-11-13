@@ -749,7 +749,7 @@ export class World {
     this.night = night;
     const glow = smoothstep(0.4, 0.85, tod);
     this.glow = glow;
-    for (const g of this.glowMats) g.mat.emissiveIntensity = lerp(g.day, g.night * 0.6, glow);
+    for (const g of this.glowMats) g.mat.emissiveIntensity = lerp(g.day, g.night * 0.32, glow); // soft paper glow, not blown out
     for (const s of this.lights) s.d2 = s.pos.distanceToSquared(focus);
     const nearest = this.lights.slice().sort((a, b) => a.d2 - b.d2);
     this.lightPool.forEach((L, i) => {
