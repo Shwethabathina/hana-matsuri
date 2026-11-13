@@ -330,6 +330,15 @@ export class Kimodameshi {
     }
 
     if (this.courage.running) return this.courage.update(dt, t);
+    // Stepping onto the haunted path opens the challenge screen automatically (once per approach).
+    const ent = this.curve.getPointAt(0.03);
+    const dEnt = Math.hypot(G.player.pos.x - ent.x, G.player.pos.z - ent.z);
+    const inRealm = window.__hana?.realm?.active || window.__hana?.hunt?.quest?.state === 8;
+    if (dEnt < 3 && !this.introOpen && !inRealm && G.mode === 'explore' && !this.ctx.ui.panelOpen) {
+      this.introOpen = true;
+      this.start();
+    }
+    if (dEnt > 6) this.introOpen = false;
     if (!this.active) return;
     this.spiritPatrol.update(dt, t);
     const pp = G.player.pos;
