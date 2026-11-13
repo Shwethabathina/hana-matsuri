@@ -13,9 +13,9 @@ import { makeCharacter, animate } from '../npc.js';
 //   * a fear meter rises when spotted / chased / caught and recovers when safe (100% = fail);
 //   * collect all three, then escape to the shrine-side exit before the timer runs out.
 const DIFF = {
-  easy: { label: 'Easy', time: 240, detect: 0.6, chase: 2.2, range: 6, wander: 2, watch: 1, giveUp: 2, hint: 26, mult: 0.8, gate: 80, fuel: 0.6 },
-  normal: { label: 'Normal', time: 180, detect: 1, chase: 2.6, range: 7, wander: 3, watch: 2, giveUp: 3, hint: 14, mult: 1, gate: 60, fuel: 0.9 },
-  hard: { label: 'Hard', time: 130, detect: 1.45, chase: 3.0, range: 8, wander: 3, watch: 3, giveUp: 4, hint: 7, mult: 1.3, gate: 42, fuel: 1.2 },
+  easy: { label: 'Easy', time: 240, detect: 0.6, chase: 2.2, range: 6, wander: 4, watch: 2, giveUp: 2, hint: 26, mult: 0.8, gate: 80, fuel: 0.6 },
+  normal: { label: 'Normal', time: 180, detect: 1, chase: 2.6, range: 7, wander: 5, watch: 3, giveUp: 3, hint: 14, mult: 1, gate: 60, fuel: 0.9 },
+  hard: { label: 'Hard', time: 130, detect: 1.45, chase: 3.0, range: 8, wander: 6, watch: 3, giveUp: 4, hint: 7, mult: 1.3, gate: 42, fuel: 1.2 },
 };
 const CELL = 0.5;
 const RATINGS = [
@@ -275,11 +275,15 @@ export class CourageChallenge {
   spawnSpirits() {
     for (const s of this.spirits) this.ctx.world.scene.remove(s.g);
     this.spirits = [];
-    const sections = [[0.2, 0.33], [0.5, 0.62], [0.72, 0.86]].slice(0, this.d.wander);
-    for (const [a, b] of sections) {
+    const sections = [[0.12, 0.22], [0.26, 0.36], [0.4, 0.5], [0.54, 0.64], [0.68, 0.78], [0.82, 0.92]];
+    // Spread the wanderers evenly over the whole loop.
+    const pickN = this.d.wander;
+    const chosen = Array.from({ length: pickN }, (_, i) => sections[Math.round((i * (sections.length - 1)) / Math.max(1, pickN - 1))]);
+    for (const [a, b] of chosen) {
       const p = this.curve.getPointAt(a).setY(0);
       this.spirits.push(this.makeSpirit('wander', p, 0, a, b));
     }
+    const unusedSections = [];
     this.spawnHunter();
     // Watchers stand a few metres from a seal, gazing over it.
     this.seals.slice(0, this.d.watch).forEach((seal, i) => {
@@ -390,8 +394,8 @@ export class CourageChallenge {
     };
     this.ctx.ui.complete(
       `<div class="dlg-role">肝試し · Test of Courage</div><h2 class="fin">The Three Mystical Seals</h2>
-       <p>Spirits have hidden three sealing talismans in the haunted forest. Find all three and escape to the <b>shrine exit</b> at the far end of the path before time runs out.</p>
-       <p>A <b>Rokurokubi</b> waits by a lantern in the heart of the forest. If she sees you, her neck stretches and she hunts you. Once the third seal is taken she will hunt you everywhere — and the shrine gate starts to close.</p>
+       <p>Spirits have hidden three sealing talismans in the haunted forest. Find all three before time runs out to win.</p>
+       <p>A <b>Rokurokubi</b> waits by a lantern in the heart of the forest. If she sees you, her neck stretches and she hunts you.</p>
        <p class="muted"><b>E</b> take a seal · <b>C</b> crouch (harder to see, silent) · <b>Shift</b> run (spirits hear it) · <b>L</b> hand lantern (see more, be seen more; limited oil) · <b>Q</b> throw a pebble (spirits investigate the noise). Spirits cannot see through trees. Being spotted, chased or caught raises your <b>fear</b> — at 100% you flee the forest.</p>
        <p class="muted">Easy 4:00 · Normal 3:00 · Hard 2:10 (higher score multiplier)</p>`,
       [
@@ -462,7 +466,11 @@ export class CourageChallenge {
     if (this.found === 1) this.kimo.scareGlide();
     if (this.found === 2) this.kimo.scareDarkness();
     if (this.found === 3) {
-      // Final escape: the Rokurokubi turns aggressive and the shrine gate starts closing.
+      // All three seals: the challenge is won.
+      setTimeout(() => this.end(true), 1300);
+      return this.hud();
+    }
+    if (false) {
       this.exitBeacon.visible = true;
       this.gate = this.d.gate;
       if (this.hunter) {
@@ -552,7 +560,7 @@ export class CourageChallenge {
     const m = Math.floor(Math.max(0, this.timer) / 60);
     const s = String(Math.floor(Math.max(0, this.timer) % 60)).padStart(2, '0');
     const fear = Math.round(this.fear);
-    const objective = this.found < 3 ? 'Find the three mystical seals' : 'Escape to the shrine exit at the end of the path';
+    const objective = 'Find the three mystical seals';
     const alarm = this.spirits.some((x) => x.state === 'chase') ? 'A spirit is chasing you!' : this.spirits.some((x) => x.state === 'investigate') ? 'Something is searching…' : '';
     const gate = this.gate !== null ? ` · <span style="color:#ff8a7a">Gate closes in <b>${Math.ceil(this.gate)}s</b></span>` : '';
     this.ctx.ui.gameHud(`<div class="gh-title">肝試し · ${objective}</div>
