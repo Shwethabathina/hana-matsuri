@@ -27,6 +27,10 @@
       #topleft .jp { color: var(--accent2); font-size: 11px; }
       #clock { font-size: 12.5px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; }
       #journal { display: none; }
+      #emblems { display: flex; gap: 4px; align-items: center; margin-top: 6px; }
+      #emblems .em { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--line); font-size: 14px; filter: grayscale(1); opacity: 0.4; }
+      #emblems .em.on { filter: none; opacity: 1; border-color: var(--accent2); background: rgba(255,210,74,0.15); }
+      #emblems .emn { font-size: 11px; color: var(--muted); margin-left: 4px; }
       #topleft.open #journal { display: block; }
       #journal-toggle { font-size: 11px; color: var(--muted); margin-top: 4px; cursor: pointer; }
       #objectives { list-style: none; padding: 0; margin: 8px 0 0; font-size: 13px; line-height: 1.55; }
@@ -128,6 +132,7 @@
     <div id="topleft" class="hud card">
       <h1>Hana Matsuri <span class="jp">花祭り</span></h1>
       <div id="clock"><span id="clocktext">16:30 · Afternoon</span><span id="coins">¥3000</span></div>
+      <div id="emblems"></div>
       <div id="journal">
         <ul id="objectives"></ul>
         <div id="patterns"></div>
@@ -148,6 +153,7 @@
       <div class="row"><button id="btn-perf" class="ghost">Perf stats (Y)</button><button id="btn-cull" class="ghost on">Area culling: on</button></div>
       <div class="row"><button id="btn-pdebug" class="ghost">Vision debug (P)</button><button id="btn-pmode" class="ghost">Vision: FOV+LOS (O)</button></div>
       <div class="row"><button id="btn-tp" class="ghost">Go to town</button><button id="btn-tp2" class="ghost">Go to festival</button></div>
+      <div class="row"><button id="btn-emblems" class="ghost">Grant all emblems (demo)</button><button id="btn-tp3" class="ghost">Go to lanterns</button></div>
       <div id="pstats" class="stat"></div>
     </div>
     <div id="gear" class="hud card">⚙ Developer ( ` )</div>
@@ -187,7 +193,7 @@
             <div><b>J</b> festival journal</div>
             <div><b>`</b> developer panel</div>
           </div>
-          <p class="muted">Play goldfish scooping, the shooting gallery, taiko and the test of courage. Through the small torii on the game plaza, the Old Town hides a short treasure hunt — villagers only notice you when they can actually see you.</p>
+          <p class="muted">Earn five emblems: goldfish scooping, the shooting gallery, taiko, the test of courage and the Old Town treasure hunt (through the small torii on the game plaza). With all five, release the festival lanterns at the basin by the viewing area to begin the fireworks.</p>
         </template>
         <template id="settings">
           <label>Graphics quality <button id="set-quality" class="btn">High</button></label>

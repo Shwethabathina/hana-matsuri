@@ -15,6 +15,7 @@ export const G = {
     shateki: false,
     taiko: false,
     kimodameshi: false,
+    treasure: false,
     shrine: false,
     fireworks: false,
   },

@@ -13,6 +13,11 @@ const HZ = 0.62;
 const WATER_Y = 0.46;
 const POI_R = 0.13;
 const CATCH_DEPTH = 0.15; // fish deeper than this slip under the paper
+// Water <-> gameplay coupling
+const WAVE_PUSH = 6; // fish acceleration per unit surface slope (m/s² per m/m)
+const SPLASH_FEAR = 0.8; // startle per m/s of vertical surface speed above the calm threshold
+const SPLASH_CALM = 0.5; // ripples slower than this (m/s) are ignored (ambient ripples, wakes)
+const TURBULENCE_WEAR = 0.6; // extra paper wear per m/s of surface speed at the poi
 const FISH_URL = 'models/goldfish.glb'; // rigged goldfish, 8 animation clips (CC-BY Picasty)
 
 const FISH_TYPES = [
@@ -27,7 +32,7 @@ const FISH_TYPES = [
 // "ripple tank" scheme). h' = (sum of 4 neighbours)/2 - h_prev, then damped.
 // Fixed borders reflect waves off the tub walls.
 // =====================================================================
-class RippleWater {
+export class RippleWater {
   constructor(width, depth, cellsX) {
     this.w = width;
     this.d = depth;
@@ -83,6 +88,31 @@ class RippleWater {
         if (dd < 1) this.cur[j * W + i] += amount * 0.5 * (1 + Math.cos(Math.PI * dd));
       }
     }
+  }
+
+  // Height, slope and vertical speed of the surface at local x,z (bilinear on the grid).
+  // Used to couple the water to gameplay: fish are pushed by waves, the paper suffers in choppy water,
+  // floating lanterns bob and drift on the same field.
+  sample(x, z, out = {}) {
+    const W = this.nx + 1;
+    const fx = clamp(((x + this.w / 2) / this.w) * this.nx, 1, this.nx - 1.001);
+    const fz = clamp(((z + this.d / 2) / this.d) * this.nz, 1, this.nz - 1.001);
+    const i = Math.floor(fx);
+    const j = Math.floor(fz);
+    const tx = fx - i;
+    const tz = fz - j;
+    const c = this.cur;
+    const p = this.prev;
+    const k = j * W + i;
+    const h = (c[k] * (1 - tx) + c[k + 1] * tx) * (1 - tz) + (c[k + W] * (1 - tx) + c[k + W + 1] * tx) * tz;
+    const hp = (p[k] * (1 - tx) + p[k + 1] * tx) * (1 - tz) + (p[k + W] * (1 - tx) + p[k + W + 1] * tx) * tz;
+    const dx = this.w / this.nx;
+    const dz = this.d / this.nz;
+    out.h = h;
+    out.gx = ((c[k + 1] - c[k - 1]) * 0.5) / dx; // slope along x (m/m)
+    out.gz = ((c[k + W] - c[k - W]) * 0.5) / dz;
+    out.v = (h - hp) * 60; // vertical speed (m/s) at the 60 Hz step
+    return out;
   }
 
   step() {
@@ -363,6 +393,7 @@ export class Goldfish {
     this.ctx.ui.gameHud(`
       <div class="gh-title">金魚すくい Goldfish Scooping</div>
       <div>Move the mouse to aim · <b>hold</b> to dip the poi · <b>release</b> under a shallow fish to scoop</div>
+      <div>🌊 Ripples push the fish: <b>tap</b> the water or press <b>Space</b> to make a wave and herd them — but choppy water soaks the paper faster.</div>
       <div class="bar"><span id="poi-hp"></span></div>
       <div>Fish: <b id="gf-count">0</b> · Score: <b id="gf-score">0</b> · Esc to leave</div>
       <div class="gf-dev"><span id="gf-stats"></span><br>
@@ -387,6 +418,11 @@ export class Goldfish {
 
   keyDown(e) {
     if (e.code === 'KeyV') this.debugGroup.visible = !this.debugGroup.visible;
+    if (e.code === 'Space' && !this.submerged) {
+      // A wave from the poi's position: fish are pushed away from it and can be herded.
+      this.water.disturb(this.poiPos.x - TUB.x, this.poiPos.z - TUB.z, 0.16, 0.05);
+      sfx.splash(0.3);
+    }
     if (e.code === 'KeyP') {
       for (let i = 0; i < 20 && this.fish.length < 600; i++) this.addFish();
       this.ctx.ui.toast(`Stress test: ${this.fish.length} animated fish`);
@@ -520,14 +556,18 @@ export class Goldfish {
       if (f.x < -mx) fx -= (f.x + mx) * 12;
       if (f.z > mz) fz -= (f.z - mz) * 14;
       if (f.z < -mz) fz -= (f.z + mz) * 14;
+      // Water coupling: waves push fish down the surface slope, and a sudden splash nearby startles them.
+      const ws = this.water.sample(f.x, f.z, this._ws || (this._ws = {}));
+      fx -= ws.gx * WAVE_PUSH;
+      fz -= ws.gz * WAVE_PUSH;
       // Flee
-      let flee = 0;
+      let flee = clamp((Math.abs(ws.v) - SPLASH_CALM) * SPLASH_FEAR, 0, 1);
       if (poiLocal && threat) {
         const dx = f.x - poiLocal.x;
         const dz = f.z - poiLocal.z;
         const d = Math.hypot(dx, dz);
         if (d < 0.42 && d > 1e-4) {
-          flee = (0.42 - d) / 0.42;
+          flee = Math.max(flee, (0.42 - d) / 0.42);
           const k = (2 + this.poiSpeed * 6) * flee;
           fx += (dx / d) * k;
           fz += (dz / d) * k;
@@ -637,7 +677,10 @@ export class Goldfish {
     if (this.submerged && !this.torn) {
       this.subT += dt;
       if (this.poiSpeed > 0.05) this.water.disturb(this.poiPos.x - TUB.x, this.poiPos.z - TUB.z, POI_R, -this.poiSpeed * 0.006);
-      this.paperHP -= dt * (0.035 + this.poiSpeed * 0.28);
+      // Drag from moving the poi, plus turbulence: choppy water (fast vertical motion) soaks the paper faster.
+      const wp = this.water.sample(this.poiPos.x - TUB.x, this.poiPos.z - TUB.z, this._wp || (this._wp = {}));
+      this.turbulence = damp(this.turbulence || 0, Math.abs(wp.v), 8, dt);
+      this.paperHP -= dt * (0.035 + this.poiSpeed * 0.28 + this.turbulence * TURBULENCE_WEAR);
       this.paperMat.opacity = 0.35 + 0.5 * this.paperHP;
       this.paperMat.color.setScalar(0.75 + 0.25 * this.paperHP);
       if (this.paperHP <= 0) this.tear();
@@ -652,7 +695,7 @@ export class Goldfish {
       this.fpsAcc = 0;
       this.fpsN = 0;
       const el = document.getElementById('gf-stats');
-      if (el) el.textContent = `${this.fps} FPS · ${this.fish.length} animated fish · water ${this.water.nx}×${this.water.nz} grid · sim ${this.water.stepMs.toFixed(2)} ms/frame`;
+      if (el) el.textContent = `${this.fps} FPS · ${this.fish.length} animated fish · water ${this.water.nx}×${this.water.nz} grid · sim ${this.water.stepMs.toFixed(2)} ms/frame · turbulence ${(this.turbulence || 0).toFixed(2)} m/s`;
     }
 
     if (this.endT !== null) {

@@ -9,6 +9,8 @@ const OBJECTIVES = [
   ['shateki', 'Shooting gallery', '射的'],
   ['taiko', 'Taiko rhythm', '太鼓'],
   ['kimodameshi', 'Test of courage', '肝試し'],
+  ['treasure', 'Old Town treasure hunt', '宝探し'],
+  ['lanterns', 'Release the festival lanterns', '灯籠流し'],
   ['shrine', 'Pray at the shrine', '参拝'],
   ['fireworks', 'Watch the fireworks finale', '花火'],
 ];
@@ -124,6 +126,11 @@ export function createUI() {
     clock(text) {
       $('clocktext').textContent = text;
       $('coins').textContent = `¥${G.coins}`;
+    },
+    // Five emblems, one per activity; all five unlock the lantern + fireworks finale.
+    emblems(list) {
+      const n = list.filter((e) => G.done[e.key]).length;
+      $('emblems').innerHTML = list.map((e) => `<span class="em ${G.done[e.key] ? 'on' : ''}" title="${e.name}">${e.icon}</span>`).join('') + `<span class="emn">${n}/5</span>`;
     },
     objectives() {
       $('objectives').innerHTML = OBJECTIVES.map(

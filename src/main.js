@@ -13,6 +13,7 @@ import { Shateki } from './games/shateki.js';
 import { Taiko } from './games/taiko.js';
 import { Kimodameshi } from './games/kimodameshi.js';
 import { TreasureHunt } from './town/hunt.js';
+import { LanternFinale, EMBLEMS, emblemCount } from './finale.js';
 import { S as QS } from './town/quest.js';
 import { buildBooth } from './booth.js';
 import { buildStallGoods } from './stallgoods.js';
@@ -75,6 +76,12 @@ function markDone(id) {
   if (G.done[id]) return;
   G.done[id] = true;
   ui.objectives();
+  ui.emblems(EMBLEMS);
+  const em = EMBLEMS.find((e) => e.key === id);
+  if (em) {
+    const n = emblemCount();
+    ui.toast(n < 5 ? `${em.icon} Emblem earned: ${em.name} (${n}/5)` : '🏮 All five emblems! Release the festival lanterns at the basin by the viewing area.');
+  }
 }
 
 function finish(id, success, html, opts = {}) {
@@ -167,12 +174,14 @@ function startFinale() {
   setTimeout(() => {
     fireworks.startShow(() => {
       markDone('fireworks');
-      const act = ['goldfish', 'shateki', 'taiko', 'kimodameshi', 'shrine'].filter((k) => G.done[k]).length;
+      const act = emblemCount();
+      const full = act === 5 && G.done.lanterns;
       player.enabled = false;
       player.unlock();
       ui.panel(`
-        <h2>🎆 お疲れさまでした — Festival complete</h2>
-        <p>Activities completed: <b>${act} / 5</b> · Foods tried: <b>${G.foods.size}</b> · Prizes: <b>${G.prizes.length}</b></p>
+        <h2>🎆 お疲れさまでした — ${full ? 'Festival complete' : 'Fireworks'}</h2>
+        <p>Emblems: <b>${act} / 5</b> ${EMBLEMS.map((e) => (G.done[e.key] ? e.icon : '·')).join(' ')} · Foods tried: <b>${G.foods.size}</b> · Prizes: <b>${G.prizes.length}</b></p>
+        ${full ? '<p>Your five lanterns drift on the water as the sky fills with fireworks. Thank you for spending the night at Hana Matsuri.</p>' : ''}
         <p class="muted">The finale mixed firework patterns unlocked by your activities. Complete more games and launch it again with <b>F</b> for new patterns.</p>`,
       () => (player.enabled = true));
     });
@@ -273,6 +282,16 @@ document.getElementById('btn-pmode').addEventListener('click', togglePerceptionM
 document.getElementById('btn-tp').addEventListener('click', () => hunt?.area === 'festival' && hunt.enter());
 document.getElementById('btn-tp2').addEventListener('click', () => hunt?.area === 'town' && hunt.exit());
 document.getElementById('gear').addEventListener('click', toggleDev);
+document.getElementById('btn-emblems').addEventListener('click', () => {
+  for (const e of EMBLEMS) markDone(e.key);
+});
+document.getElementById('btn-tp3').addEventListener('click', () => {
+  const go = () => player.place(new THREE.Vector3(L.viewing.x, 0, L.viewing.z + 0.9), Math.PI);
+  if (hunt?.area === 'town') {
+    hunt.exit();
+    setTimeout(go, 500);
+  } else go();
+});
 document.getElementById('journal-toggle').addEventListener('click', () => ui.toggleJournal());
 
 // ---------------------------------------------------------------- input
@@ -433,7 +452,8 @@ function drawMinimap(npcs) {
     [L.goldfish, '🐟', G.done.goldfish], [L.shateki, '🎯', G.done.shateki], [L.taiko, '🥁', G.done.taiko],
     [L.kimoEntrance, '👻', G.done.kimodameshi], [L.torii, '⛩️', false], [L.offering, '🙏', G.done.shrine],
     [L.viewing, '🎆', G.done.fireworks], [L.omikuji, '📜', false], [new THREE.Vector3(0, 0, 0), '🏮', G.done.explore],
-    [new THREE.Vector3(13.4, 0, 4.7), '🔔', hunt?.quest?.state === QS.COMPLETE],
+    [new THREE.Vector3(13.4, 0, 4.7), '🔔', G.done.treasure],
+    [new THREE.Vector3(L.viewing.x, 0, L.viewing.z + 3.6), '🪔', G.done.lanterns],
   ];
   for (const [p, ic, done] of icons) {
     mm.globalAlpha = done ? 0.45 : 1;
@@ -454,6 +474,7 @@ let started = false;
 let npcs = null;
 let kimo = null;
 let hunt = null;
+let finale = null;
 
 async function boot() {
   const manager = new THREE.LoadingManager();
@@ -512,6 +533,7 @@ async function boot() {
   ui.progress(1, 'Loading the Old Town…');
   hunt = new TreasureHunt({
     world, player, ui,
+    onComplete: () => markDone('treasure'),
     onArea: (area) => {
       applyAreaVisibility();
       document.getElementById('mapname').textContent = area === 'town' ? 'Old Town' : 'Festival street';
@@ -525,9 +547,11 @@ async function boot() {
     ui.progress(1, '⚠️ Could not load the Old Town model — the treasure hunt is unavailable.');
   }
 
+  finale = new LanternFinale({ world, ui, player, onFireworks: () => startFinale() });
   ui.objectives();
+  ui.emblems(EMBLEMS);
   // Handle for debugging / automated screenshots from the console.
-  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto, hunt, renderer, measure, toggleCulling, get areaCulling() { return areaCulling; } };
+  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto, hunt, finale, markDone, renderer, measure, toggleCulling, get areaCulling() { return areaCulling; } };
   // Warm up shaders so the first frame after entering doesn't hitch.
   renderer.compile(scene, camera);
   // Tree models stream in after start-up; compile their shaders before they first appear.
@@ -641,6 +665,7 @@ function frame() {
     kimo.update(dt, elapsed);
   }
   hunt?.update(dt, elapsed);
+  if (!festivalPaused) finale?.update(dt);
   fireworks.update(dt);
 
   // Camera: tween, minigame pose, or first-person

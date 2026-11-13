@@ -22,7 +22,8 @@ const VILLAGERS = [
 ];
 
 export class TreasureHunt {
-  constructor({ world, player, ui, onArea }) {
+  constructor({ world, player, ui, onArea, onComplete }) {
+    this.onComplete = onComplete;
     this.world = world;
     this.player = player;
     this.ui = ui;
@@ -41,6 +42,8 @@ export class TreasureHunt {
     this.quest = new HeirloomQuest(this.town);
     this.villagers = {};
     for (const d of VILLAGERS) this.villagers[d.key] = new Villager(this.town, d);
+    // Villagers are solid: the player walks around them, not through them.
+    for (const v of Object.values(this.villagers)) this.world.colliders.addCircle(v.pos.x, v.pos.z, 0.28, 'villager');
     this.quest.onChange(() => this.refreshHud());
 
     const inTown = () => this.area === 'town' && !this.talking;
@@ -160,11 +163,12 @@ export class TreasureHunt {
 
   complete() {
     sfx.cheer?.();
+    this.onComplete?.();
     const P = this.player;
     P.enabled = false;
     P.unlock();
     this.ui.complete(
-      `<h2>🔔 Quest complete</h2><p><b>The Missing Festival Heirloom</b></p><p>You followed the torn cord and the dropped dango to the tanuki’s nest and returned the Kagura Bell. Clues found: <b>2 / 2</b>.</p>`,
+      `<h2>🔔 Quest complete</h2><p><b>The Missing Festival Heirloom</b> · Emblem earned 🔔</p><p>You followed the torn cord and the dropped dango to the tanuki’s nest and returned the Kagura Bell. Clues found: <b>2 / 2</b>.</p>`,
       [
         ['Restart the hunt', () => this.restart()],
         ['Return to the festival', () => this.exit()],
