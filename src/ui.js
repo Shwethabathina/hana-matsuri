@@ -123,7 +123,7 @@ export function createUI() {
     },
     questJournal(entries, objective) {
       $('qjournal').innerHTML = entries.length
-        ? `<div class="jh">The Missing Festival Heirloom</div><div class="jo">${objective}</div>` + entries.map((e) => `<div class="je"><b>${e.title}</b><span>${e.text}</span></div>`).join('')
+        ? `<div class="jh">The Lost Festival Spirit</div><div class="jo">${objective}</div>` + entries.map((e) => `<div class="je"><b>${e.title}</b><span>${e.text}</span></div>`).join('')
         : '';
     },
     // Panel with several choices (e.g. quest completion: restart / return).

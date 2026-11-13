@@ -14,6 +14,7 @@ import { Taiko } from './games/taiko.js';
 import { Kimodameshi } from './games/kimodameshi.js';
 import { TreasureHunt } from './town/hunt.js';
 import { LanternFinale, EMBLEMS, emblemCount } from './finale.js';
+import { SpiritRealm } from './realm.js';
 import { S as QS } from './town/quest.js';
 import { buildBooth } from './booth.js';
 import { buildStallGoods } from './stallgoods.js';
@@ -495,6 +496,7 @@ let npcs = null;
 let kimo = null;
 let hunt = null;
 let finale = null;
+let realm = null;
 
 async function boot() {
   const manager = new THREE.LoadingManager();
@@ -519,7 +521,14 @@ async function boot() {
   for (const g of [games.goldfish, games.shateki, games.taiko]) {
     world.addInteractable({ ...g.interact, action: () => enterGame(g.interact.id) });
   }
-  world.addInteractable({ ...kimo.interact, enabled: () => !kimo.active, action: () => kimo.start() });
+  world.addInteractable({ ...kimo.interact, enabled: () => !kimo.active && !realm?.active && hunt?.quest?.state !== QS.SPIRIT_REALM, action: () => kimo.start() });
+  // Spirit Realm chapter: the same haunted path, with a guardian encounter in the clearing.
+  realm = new SpiritRealm({
+    world, ui, kimo,
+    onDone: () => {
+      if (hunt?.quest.advance(QS.SPIRIT_REALM, QS.RETURN_SPIRIT)) ui.toast('Journal updated: The guardian — carry the spirit back to the shrine');
+    },
+  });
 
   // Everything that blocks movement is registered: rasterise the nav grid.
   const nav = new NavGrid(world.colliders, { minX: WORLD_BOUNDS.minX, maxX: 52, minZ: -14, maxZ: WORLD_BOUNDS.maxZ, cell: 0.5, agentRadius: 0.4 });
@@ -572,7 +581,7 @@ async function boot() {
   ui.objectives();
   ui.emblems(EMBLEMS);
   // Handle for debugging / automated screenshots from the console.
-  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto, hunt, finale, markDone, renderer, measure, toggleCulling, get areaCulling() { return areaCulling; } };
+  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto, hunt, finale, realm, markDone, renderer, measure, toggleCulling, get areaCulling() { return areaCulling; } };
   // Warm up shaders so the first frame after entering doesn't hitch.
   renderer.compile(scene, camera);
   // Tree models stream in after start-up; compile their shaders before they first appear.
@@ -591,7 +600,15 @@ async function boot() {
     player.enabled = true;
     try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch {}
     if (toTown && hunt) hunt.enter();
-    else ui.toast('Welcome to Hana Matsuri! Walk east (W) down the street of stalls.');
+    else if (hunt) {
+      // Story opening, told in the dialogue box over the festival street.
+      player.enabled = false;
+      ui.dialogue([
+        { name: 'Hana Matsuri', role: 'The Lost Festival Spirit', text: 'Every summer, the lanterns of Hana Matsuri are lit by the spirit that lives in the shrine’s <b>Kagura Bell</b>.' },
+        { name: 'Hana Matsuri', role: 'The Lost Festival Spirit', text: 'Tonight the bell has vanished from its cart in the Old Town — and as the sun sets, the lights are already beginning to dim.' },
+        { name: 'Hana Matsuri', role: 'The Lost Festival Spirit', text: 'Enjoy the stalls and games, but find <b>Hanae</b>, the festival organizer, in the Old Town. The small torii on the game plaza leads there.' },
+      ], () => (player.enabled = true));
+    }
   };
   const btn = document.getElementById('enter');
   btn.disabled = false;
@@ -651,6 +668,7 @@ let perfT = 0;
 let perfN = 0;
 
 let cpuMs = 0;
+let realmNoteT = 0;
 function frame() {
   requestAnimationFrame(frame);
   const t0 = performance.now();
@@ -686,6 +704,23 @@ function frame() {
     kimo.update(dt, elapsed);
   }
   hunt?.update(dt, elapsed);
+  // Spirit Realm: starts when the player steps onto the haunted path during that quest step.
+  if (realm && hunt?.quest) {
+    const st = hunt.quest.state;
+    if (st === QS.SPIRIT_REALM && !realm.active && !kimo.active && hunt.area === 'festival' && Math.hypot(player.pos.x - L.kimoEntrance.x, player.pos.z - L.kimoEntrance.z) < 2.5) realm.start();
+    realm.update(dt, elapsed);
+    hunt.festivalGoal = realm.active ? (realm.phase === 'path' ? realm.entry : realm.phase === 'guardian' ? null : null) : null;
+    if (realm.phase === 'guardian') {
+      realmNoteT -= dt;
+      if (realmNoteT <= 0) {
+        realmNoteT = 0.2;
+        ui.questNote(realm.note);
+      }
+    }
+    // The lights fade while the festival spirit is lost; they return when it is restored.
+    const target = st >= QS.COMPLETE ? 1 : st >= QS.RING_BELL ? 0.5 + Math.sin(elapsed * 7) * 0.04 * Math.random() : 1 - 0.3 * Math.max(0, world.tod - 0.7) / 0.3;
+    world.lightLevel = damp(world.lightLevel, target, 1.5, dt);
+  }
   if (!festivalPaused) finale?.update(dt);
   fireworks.update(dt);
 

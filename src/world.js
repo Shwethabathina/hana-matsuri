@@ -20,6 +20,7 @@ export class World {
     this.interactables = [];
     this.glowMats = []; // { mat, day, night } emissive multipliers
     this.lights = []; // lantern light sources: { pos, color, base, distance, flicker }
+    this.lightLevel = 1; // festival lantern strength (fades while the festival spirit is lost)
     this.tod = 0.48; // 0 = late afternoon, 1 = full night; the evening starts at golden hour
     this.glow = 0;
     this.night = 0;
@@ -749,7 +750,8 @@ export class World {
     this.night = night;
     const glow = smoothstep(0.4, 0.85, tod);
     this.glow = glow;
-    for (const g of this.glowMats) g.mat.emissiveIntensity = lerp(g.day, g.night * 0.32, glow); // soft paper glow, not blown out
+    const lv = this.lightLevel;
+    for (const g of this.glowMats) g.mat.emissiveIntensity = lerp(g.day, g.night * 0.32 * lv, glow); // soft paper glow, not blown out
     for (const s of this.lights) s.d2 = s.pos.distanceToSquared(focus);
     const nearest = this.lights.slice().sort((a, b) => a.d2 - b.d2);
     this.lightPool.forEach((L, i) => {
@@ -762,7 +764,7 @@ export class World {
       L.position.copy(s.pos);
       L.color.copy(s.color);
       L.distance = s.distance;
-      L.intensity = s.base * 0.45 * glow * flick;
+      L.intensity = s.base * 0.45 * glow * flick * (0.4 + 0.6 * lv);
     });
     this.stars.material.opacity = night * (1 - 0.5 * F);
     this.moon.material.opacity = night;

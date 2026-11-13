@@ -5,7 +5,12 @@ import { Villager } from './villagers.js';
 import { Tanuki } from './tanuki.js';
 
 // Festival locations used by the quest (world coordinates, see layout.js).
-const FESTIVAL = { taiko: new THREE.Vector3(26, 0, -6.6), shrine: new THREE.Vector3(44.9, 0, 0) };
+const FESTIVAL = {
+  taiko: new THREE.Vector3(26, 0, -6.6),
+  shrine: new THREE.Vector3(44.9, 0, 0),
+  townGate: new THREE.Vector3(13.4, 0, 3.7),
+  forest: new THREE.Vector3(32, 0, -3.4),
+};
 import { sfx } from '../audio.js';
 
 // Town Treasure Hunt controller: area switching, villagers, clue interactions, dialogue and the
@@ -155,13 +160,32 @@ export class TreasureHunt {
     }
   }
 
-  // Called by the festival shrine. Returns true if it started the quest finale.
+  // Called by the festival shrine. Returns true if the quest handled the shrine interaction.
   ringAtShrine() {
-    if (!this.quest.advance(S.RING_BELL, S.COMPLETE)) return false;
-    sfx.suzu();
-    this.onComplete?.();
-    this.onFinale?.(() => this.complete());
-    return true;
+    const Q = this.quest;
+    if (Q.state === S.RING_BELL) {
+      sfx.suzu();
+      this.dialog([
+        { name: 'The Kagura Bell', text: 'You ring the bell before the shrine… and it makes no sound. Not a whisper.' },
+        { name: 'A voice in the trees', text: 'The spirit that sang in this bell was taken into the forest by its old guardian, turned bitter and dark. Without it, <b>the festival lights will fade by midnight</b>.' },
+        { name: 'A voice in the trees', text: 'Walk the haunted path. Slip past the wandering spirits. Light the four shrine lanterns in the clearing, and the guardian will let it go.' },
+      ], () => {
+        Q.advance(S.RING_BELL, S.SPIRIT_REALM);
+        this.ui.toast('Journal updated: A hollow ring');
+      });
+      return true;
+    }
+    if (Q.state === S.RETURN_SPIRIT && Q.advance(S.RETURN_SPIRIT, S.COMPLETE)) {
+      sfx.suzu();
+      this.onComplete?.();
+      this.onFinale?.(() => this.complete());
+      return true;
+    }
+    if (Q.state === S.SPIRIT_REALM) {
+      this.ui.toast('The bell is still silent. Its spirit waits in the forest — the haunted path starts by the game plaza.');
+      return true;
+    }
+    return false;
   }
 
   buildLines() {
@@ -260,8 +284,8 @@ export class TreasureHunt {
     P.enabled = false;
     P.unlock();
     this.ui.complete(
-      `<div class="dlg-role">Quest complete</div><h2 class="fin">The Missing Festival Heirloom</h2>
-       <p>You read the clues on the cart, learned the thief’s habits from Kenta, drew it out with the festival drums, crept up on it unseen and carried the Kagura Bell to the shrine. The night procession has begun.</p>
+      `<div class="dlg-role">Quest complete</div><h2 class="fin">The Lost Festival Spirit</h2>
+       <p>You read the clues on the cart, learned the thief’s habits from Kenta, drew it out with the festival drums and crept up on it unseen. In the spirit realm you slipped past the wandering onibi and lit the four lanterns that purified the guardian. The festival spirit sings in the Kagura Bell again, and the lights of Hana Matsuri burn bright.</p>
        <p class="muted">Emblem earned · Old Town Treasure Hunt</p>`,
       [
         ['Continue exploring', () => (P.enabled = true)],
@@ -368,15 +392,15 @@ export class TreasureHunt {
   refreshHud() {
     const Q = this.quest;
     if (!Q) return;
-    const active = Q.state !== S.NOT_STARTED || this.area === 'town';
-    this.ui.questHud(active ? { title: 'The Missing Festival Heirloom', objective: Q.objective, clues: Q.clues, bell: Q.hasBell, done: Q.state === S.COMPLETE } : null);
+    const active = true; // the story is the spine of the game: always show the current objective
+    this.ui.questHud(active ? { title: 'The Lost Festival Spirit', objective: Q.objective, clues: Q.clues, bell: Q.hasBell, done: Q.state === S.COMPLETE } : null);
     this.ui.questJournal(Q.journal(), Q.objective);
   }
 
   // Festival-side guidance for the steps that happen there (direct line: the festival is open ground).
   updateFestival(dt) {
     const st = this.quest?.state;
-    const goal = st === S.PLAY_DRUMS ? FESTIVAL.taiko : st === S.RING_BELL ? FESTIVAL.shrine : null;
+    const goal = this.festivalGoal ?? (st === S.NOT_STARTED ? FESTIVAL.townGate : st === S.PLAY_DRUMS ? FESTIVAL.taiko : st === S.RING_BELL || st === S.RETURN_SPIRIT ? FESTIVAL.shrine : st === S.SPIRIT_REALM ? FESTIVAL.forest : null);
     this.dirT = (this.dirT || 0) - dt;
     if (this.dirT > 0) return;
     this.dirT = 0.15;

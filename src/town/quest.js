@@ -13,12 +13,14 @@ export const S = {
   FIND_TANUKI: 4, // track the thief by its jingle and sneak up on it
   TAKE_BELL: 5, // pick up the bell it dropped
   RETURN_BELL: 6, // bring the bell back to Hanae
-  RING_BELL: 7, // ring it at the festival shrine to open the procession
-  COMPLETE: 8,
+  RING_BELL: 7, // ring it at the festival shrine — it rings hollow: its spirit is gone
+  SPIRIT_REALM: 8, // cross the haunted forest and face the guardian spirit
+  RETURN_SPIRIT: 9, // carry the restored spirit back and ring the bell again
+  COMPLETE: 10,
 };
 
 const OBJECTIVES = {
-  [S.NOT_STARTED]: 'Talk to Hanae, the festival organizer',
+  [S.NOT_STARTED]: 'Find Hanae in the Old Town — through the small torii on the game plaza',
   [S.FIND_CORD]: 'Examine Hanae’s festival cart in the courtyard',
   [S.ASK_SHOPKEEPER]: 'Ask Kenta the dango seller about the crumbs',
   [S.PLAY_DRUMS]: 'Return to the festival and play the taiko drums',
@@ -26,7 +28,9 @@ const OBJECTIVES = {
   [S.TAKE_BELL]: 'Pick up the Kagura Bell',
   [S.RETURN_BELL]: 'Bring the Kagura Bell back to Hanae',
   [S.RING_BELL]: 'Ring the Kagura Bell at the festival shrine',
-  [S.COMPLETE]: 'The procession has begun — enjoy the festival',
+  [S.SPIRIT_REALM]: 'Enter the haunted forest path and free the festival spirit',
+  [S.RETURN_SPIRIT]: 'Bring the festival spirit back to the shrine',
+  [S.COMPLETE]: 'The festival spirit is restored — enjoy the night',
 };
 
 // Journal entries unlocked as the story moves past each state.
@@ -38,6 +42,8 @@ const JOURNAL = [
   [S.TAKE_BELL, 'The thief', 'Caught the tanuki from behind — it dropped the bell and fled. Tanuki see well in front, poorly behind, and hear running feet.'],
   [S.RETURN_BELL, 'The heirloom', 'The Kagura Bell is recovered, a little sticky with dango.'],
   [S.RING_BELL, 'The procession', 'Hanae asked for the bell to be rung at the festival shrine to open the night procession.'],
+  [S.SPIRIT_REALM, 'A hollow ring', 'The bell rang without a voice. Its spirit was dragged into the forest by a corrupted guardian — and the festival lights are fading.'],
+  [S.RETURN_SPIRIT, 'The guardian', 'Four shrine lanterns lit in the spirit realm. The guardian was purified and the festival spirit returned to the bell.'],
 ];
 
 export class HeirloomQuest {
