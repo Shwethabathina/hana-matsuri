@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { KIMO_PATH, L } from '../layout.js';
+import { SpiritPatrol } from './spirits.js';
 import { G } from '../state.js';
 import { sfx } from '../audio.js';
 import { canvasTexture, damp, glowTexture, rand, signTexture } from '../util.js';
@@ -122,6 +123,8 @@ export class Kimodameshi {
     this.flicker = 0;
     // Precompute samples for nearest-parameter lookups.
     this.samples = Array.from({ length: 200 }, (_, i) => this.curve.getPointAt(i / 199));
+    // Patrolling onibi with vision cones: being seen sends the player back to the last checkpoint.
+    this.spiritPatrol = new SpiritPatrol(ctx, this.curve);
   }
 
   makeGhost() {
@@ -154,8 +157,28 @@ export class Kimodameshi {
       s.g.visible = true;
     });
     this.scares.forEach((s) => (s.fired = false));
-    this.ctx.ui.toast('👻 Follow the dark path and collect 5 courage seals (勇).');
-    this.ctx.ui.quest('👻 Courage seals: 0 / 5');
+    this.checkpoint = { pos: this.curve.getPointAt(0.02), t: 0.02 };
+    this.spiritPatrol.start(() => this.caught());
+    this.ctx.ui.toast('Follow the dark path and collect 5 courage seals. Stay out of the spirits’ light — hide behind trees, crouch with C.');
+    this.questText();
+  }
+
+  questText() {
+    const c = this.spiritPatrol.caughtCount;
+    this.ctx.ui.quest(`Courage seals ${this.collected} / 5${c ? ` · caught ${c}×` : ''} — avoid the spirits’ light`);
+  }
+
+  // Seen by a spirit: a cold flash, and the player wakes at the last checkpoint (seals are kept).
+  caught() {
+    this.ctx.ui.flash();
+    sfx.scare();
+    G.player.shake = 0.6;
+    const cp = this.checkpoint;
+    const ahead = this.curve.getPointAt(Math.min(1, cp.t + 0.02));
+    G.player.place(cp.pos, Math.atan2(-(ahead.x - cp.pos.x), -(ahead.z - cp.pos.z)));
+    G.player.vel.set(0, 0, 0);
+    this.ctx.ui.toast('A spirit saw you… you wake by the last lantern.');
+    this.questText();
   }
 
   nearestT(p) {
@@ -270,6 +293,7 @@ export class Kimodameshi {
     }
 
     if (!this.active) return;
+    this.spiritPatrol.update(dt, t);
     const pp = G.player.pos;
     for (const s of this.seals) {
       if (s.taken) continue;
@@ -278,8 +302,9 @@ export class Kimodameshi {
         s.g.visible = false;
         this.collected++;
         sfx.chime();
-        this.ctx.ui.toast(`勇 Courage seal ${this.collected} / 5`);
-        this.ctx.ui.quest(`👻 Courage seals: ${this.collected} / 5`);
+        this.ctx.ui.toast(`勇 Courage seal ${this.collected} / 5 — checkpoint`);
+        this.checkpoint = { pos: new THREE.Vector3(s.g.position.x, 0, s.g.position.z), t: this.nearestT(s.g.position).t };
+        this.questText();
       }
     }
     const { t: pt, d } = this.nearestT(pp);
@@ -294,10 +319,11 @@ export class Kimodameshi {
     if (pt > 0.97 && d < 3) {
       if (this.collected >= 5) {
         this.active = false;
+        this.spiritPatrol.stop();
         this.ctx.ui.quest('');
         this.ctx.finish('kimodameshi', true, `
           <h2>👻 Courage proven! 勇気</h2>
-          <p>You walked the haunted path and collected all 5 courage seals.</p>
+          <p>You walked the haunted path and collected all 5 courage seals${this.spiritPatrol.caughtCount ? `, caught by the spirits ${this.spiritPatrol.caughtCount} time(s)` : ' without being seen by a single spirit'}.</p>
           <p class="muted">Rendering: the forest drives fog density, hemisphere and sun light down and switches on your hand lantern, so the same lighting rig produces a contrasting night scene.</p>
           <p>🎆 Unlocked: <b>Ghost willow</b> firework pattern</p>`, { noCamera: true });
       } else if (!this.warned) {
