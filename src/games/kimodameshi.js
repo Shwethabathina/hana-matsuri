@@ -94,6 +94,20 @@ export class Kimodameshi {
 
     // Yurei ghost
     this.ghost = this.makeGhost();
+    // Hannya mask replaces the procedural ghost for the scares when the model is available.
+    if (ctx.spirits?.hannya) {
+      this.ghost = new THREE.Group();
+      const mask = ctx.spirits.hannya.scene.clone();
+      mask.position.y = 1.0;
+      mask.traverse((o) => {
+        if (o.isMesh) {
+          o.material = o.material.clone();
+          o.material.transparent = true;
+          o.material.emissive?.set('#3a0a0a');
+        }
+      });
+      this.ghost.add(mask);
+    }
     this.ghost.visible = false;
     scene.add(this.ghost);
     // Hitodama (will-o'-wisps)
@@ -123,6 +137,22 @@ export class Kimodameshi {
     this.flicker = 0;
     // Precompute samples for nearest-parameter lookups.
     this.samples = Array.from({ length: 200 }, (_, i) => this.curve.getPointAt(i / 199));
+    // Kodama watch silently from the forest edge, turning to follow the player.
+    this.kodama = [];
+    if (ctx.spirits?.kodama) {
+      for (let i = 0; i < 12; i++) {
+        const t = 0.06 + (i / 12) * 0.9;
+        const p = this.curve.getPointAt(t);
+        const tan = this.curve.getTangentAt(t);
+        const side = i % 2 ? 2.4 : -2.4;
+        const k = ctx.spirits.kodama.scene.clone();
+        k.position.set(p.x - tan.z * side, 0, p.z + tan.x * side);
+        k.scale.setScalar(0.8 + Math.random() * 0.5);
+        k.rotation.y = Math.random() * Math.PI * 2;
+        ctx.world.scene.add(k);
+        this.kodama.push(k);
+      }
+    }
     // Patrolling onibi with vision cones: being seen sends the player back to the last checkpoint.
     this.spiritPatrol = new SpiritPatrol(ctx, this.curve);
   }
@@ -231,6 +261,17 @@ export class Kimodameshi {
 
   update(dt, t) {
     const world = this.ctx.world;
+    // Kodama heads turn toward a nearby player (with a little delay, like curious onlookers).
+    for (const k of this.kodama) {
+      const dx = G.player.pos.x - k.position.x;
+      const dz = G.player.pos.z - k.position.z;
+      if (dx * dx + dz * dz < 100) {
+        const want = Math.atan2(dx, dz);
+        let d = want - k.rotation.y;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        k.rotation.y += d * (1 - Math.exp(-2 * dt));
+      }
+    }
     // Hand lantern follows forest darkness
     const hand = world.forest * (this.flicker > 0 ? (Math.random() < 0.3 ? 1 : 0.05) : 1);
     this.handLight.intensity = hand * 2.2;
@@ -261,7 +302,7 @@ export class Kimodameshi {
         gh.position.lerpVectors(A.from, A.to, k);
         gh.position.y = 0.2 + Math.sin(t * 3) * 0.1;
         gh.lookAt(G.player.pos.x, gh.position.y, G.player.pos.z);
-        gh.children.forEach((c) => c.material && (c.material.opacity = Math.sin(k * Math.PI) * 0.8));
+        gh.traverse((c) => c.material && (c.material.opacity = Math.sin(k * Math.PI) * 0.8));
         if (k >= 1) {
           gh.visible = false;
           this.anim = null;
@@ -269,7 +310,7 @@ export class Kimodameshi {
       } else if (A.kind === 'wait') {
         gh.position.y = 0.2 + Math.sin(t * 2) * 0.08;
         gh.lookAt(G.player.pos.x, gh.position.y, G.player.pos.z);
-        gh.children.forEach((c) => c.material && (c.material.opacity = 0.8));
+        gh.traverse((c) => c.material && (c.material.opacity = 0.9));
         if (gh.position.distanceTo(G.player.pos.clone().setY(gh.position.y)) < 5 || A.t > 6) {
           this.anim = { kind: 'rush', t: 0 };
           sfx.scare();

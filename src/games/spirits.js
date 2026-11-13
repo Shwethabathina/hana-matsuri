@@ -36,12 +36,21 @@ export class SpiritPatrol {
       const body = new THREE.Group();
       body.position.y = 1.5;
       body.add(flame, core);
+      // Kasa-obake model (one-legged umbrella yōkai) when available; the wisp becomes its eerie glow.
+      let model = null;
+      if (ctx.spirits?.kasa) {
+        model = ctx.spirits.kasa.scene.clone();
+        g.add(model);
+        flame.scale.setScalar(0.55);
+        core.scale.setScalar(0.18);
+        body.position.y = 1.15;
+      }
       const cone = new THREE.Mesh(new THREE.CircleGeometry(RANGE, 28, Math.PI / 2 - half, half * 2).rotateX(-Math.PI / 2), coneMat.clone());
       cone.position.y = 0.04;
       g.add(body, cone);
       g.visible = false;
       scene.add(g);
-      this.spirits.push({ ...d, g, body, flame, cone, t: d.a + Math.random() * (d.b - d.a), dir: 1, heading: 0, pause: 0, look: 0, sus: 0, seen: false });
+      this.spirits.push({ ...d, g, body, flame, cone, model, t: d.a + Math.random() * (d.b - d.a), dir: 1, heading: 0, pause: 0, look: 0, sus: 0, seen: false });
     }
     this.light = ctx.world.addLight(new THREE.Vector3(0, -50, 0), { color: 0x6ab8ff, base: 4, distance: 9, flicker: 0.3 });
     this.trees = null;
@@ -109,7 +118,13 @@ export class SpiritPatrol {
       s.heading = angleDamp(s.heading, target, 4, dt);
       s.g.position.set(p.x, 0, p.z);
       s.g.rotation.y = s.heading;
-      s.body.position.y = 1.5 + Math.sin(t * 2.4 + s.a * 9) * 0.15;
+      if (s.model) {
+        // Hops on its single leg while moving, sways while it looks around.
+        const hop = s.pause > 0 ? 0 : Math.abs(Math.sin(t * 5 + s.a * 9));
+        s.model.position.y = hop * 0.28;
+        s.model.rotation.z = s.pause > 0 ? Math.sin(t * 2 + s.a) * 0.08 : (hop - 0.5) * 0.12;
+        s.body.position.y = 1.15 + hop * 0.28;
+      } else s.body.position.y = 1.5 + Math.sin(t * 2.4 + s.a * 9) * 0.15;
       s.flame.material.opacity = 0.75 + Math.sin(t * 11 + s.a * 20) * 0.2;
 
       // Perception: distance (shrinks when crouching), field of view, line of sight past the trees.

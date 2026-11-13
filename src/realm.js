@@ -28,6 +28,7 @@ export class SpiritRealm {
     this.entry = curve.getPointAt(0.4).setY(0);
     const scene = world.scene;
 
+    const assets = kimo.ctx.spirits || {};
     // Four stone shrine lanterns (tōrō) around the clearing.
     this.lanterns = [0.42, 0.47, 0.53, 0.58].map((t, i) => {
       const p = curve.getPointAt(t);
@@ -49,7 +50,10 @@ export class SpiritRealm {
       flame.scale.setScalar(1.1);
       flame.position.y = 0.7;
       flame.visible = false;
-      g.add(base, box, light, roof, flame);
+      if (assets.lantern) {
+        g.add(assets.lantern.scene.clone(), flame);
+        flame.position.y = 0.95;
+      } else g.add(base, box, light, roof, flame);
       g.position.copy(pos);
       g.visible = false;
       scene.add(g);
@@ -65,20 +69,32 @@ export class SpiritRealm {
       });
     }
 
-    // The guardian: a towering pale spirit with a red vision cone.
-    this.guardian = kimo.makeGhost();
-    this.guardian.scale.setScalar(1.9);
-    this.guardian.traverse((o) => {
-      if (o.material?.emissive) o.material = o.material.clone();
-      if (o.material?.emissive) o.material.emissive.set('#c84a6a');
-    });
+    // The guardian: the multi-eyed imp (rigged, with Idle/Run/Enrage/Flinch/Death clips), or a pale ghost fallback.
+    this.gScale = 1;
+    if (assets.guardian) {
+      this.guardian = assets.guardian.scene;
+      this.mixer = new THREE.AnimationMixer(this.guardian);
+      const clip = (n) => assets.guardian.animations.find((a) => a.name.endsWith('|' + n));
+      this.acts = {};
+      for (const n of ['Idle', 'Run', 'Enrage', 'Flinch', 'Death']) if (clip(n)) this.acts[n] = this.mixer.clipAction(clip(n));
+      for (const n of ['Enrage', 'Flinch', 'Death']) {
+        if (!this.acts[n]) continue;
+        this.acts[n].setLoop(THREE.LoopOnce, 1);
+        this.acts[n].clampWhenFinished = true;
+      }
+      this.play('Idle');
+    } else {
+      this.guardian = kimo.makeGhost();
+      this.gScale = 1.9;
+      this.guardian.scale.setScalar(1.9);
+    }
     const half = THREE.MathUtils.degToRad(G_FOV / 2);
     this.cone = new THREE.Mesh(
       new THREE.CircleGeometry(G_RANGE, 28, Math.PI / 2 - half, half * 2).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color: 0xff5a6a, transparent: true, opacity: 0.16, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }),
     );
     this.cone.position.y = 0.05;
-    this.cone.scale.setScalar(1 / 1.9);
+    this.cone.scale.setScalar(1 / this.gScale);
     this.guardian.add(this.cone);
     this.guardian.visible = false;
     scene.add(this.guardian);
@@ -92,6 +108,16 @@ export class SpiritRealm {
     this.spirit.scale.setScalar(1.2);
     this.spirit.visible = false;
     scene.add(this.spirit);
+  }
+
+  // Cross-fade the guardian's animation.
+  play(name, fade = 0.25) {
+    if (!this.acts) return;
+    const next = this.acts[name] || this.acts.Idle;
+    if (!next || next === this.cur) return;
+    next.reset().fadeIn(fade).play();
+    this.cur?.fadeOut(fade);
+    this.cur = next;
   }
 
   get litCount() {
@@ -150,6 +176,8 @@ export class SpiritRealm {
     L.light.material.color.set('#ffcf8a');
     L.src.pos.set(L.pos.x, 1.0, L.pos.z);
     sfx.chime();
+    this.play('Flinch', 0.1);
+    this.oneShot = 1.0;
     // The guardian hears the lantern catch and comes to investigate.
     this.gTarget = L.pos.clone();
     if (this.gState === 'patrol') this.gState = 'search';
@@ -160,6 +188,7 @@ export class SpiritRealm {
   win() {
     this.phase = 'won';
     this.wonT = 0;
+    this.play('Death', 0.2);
     sfx.suzu();
     this.ui.toast('The guardian’s darkness breaks apart. The festival spirit is free!');
   }
@@ -222,6 +251,11 @@ export class SpiritRealm {
       this.grace = Math.max(0, this.grace - dt);
       if (this.timer <= 0) return this.fail('time');
       const seen = this.grace <= 0 && this.sees(P);
+      if (seen && this.gState !== 'hunt') {
+        this.play('Enrage', 0.15); // roars when it first spots the player
+        this.oneShot = 1.1;
+        sfx.scare();
+      }
       if (seen) {
         this.gState = 'hunt';
         this.lostT = 0;
@@ -250,7 +284,13 @@ export class SpiritRealm {
       const dx = goal.x - this.gPos.x;
       const dz = goal.z - this.gPos.z;
       const d = Math.hypot(dx, dz);
-      if (d > 0.3) {
+      this.oneShot = Math.max(0, (this.oneShot || 0) - dt);
+      if (this.mixer) {
+        if (this.oneShot <= 0) this.play(d > 0.3 ? 'Run' : 'Idle');
+        if (this.acts?.Run) this.acts.Run.timeScale = this.gState === 'hunt' ? 1 : 0.6;
+        this.mixer.update(dt);
+      }
+      if (d > 0.3 && this.oneShot <= 0) {
         this.gPos.x += (dx / d) * Math.min(d, speed * dt);
         this.gPos.z += (dz / d) * Math.min(d, speed * dt);
         this.gHeading = angleDamp(this.gHeading, Math.atan2(dx, dz), 4, dt);
@@ -258,7 +298,7 @@ export class SpiritRealm {
         this.gHeading += dt * 0.9; // looks around
       }
       if (this.grace <= 0 && Math.hypot(P.pos.x - this.gPos.x, P.pos.z - this.gPos.z) < 1.0) return this.fail('caught');
-      this.guardian.position.set(this.gPos.x, 0.2 + Math.sin(t * 2) * 0.12, this.gPos.z);
+      this.guardian.position.set(this.gPos.x, this.mixer ? 0 : 0.2 + Math.sin(t * 2) * 0.12, this.gPos.z);
       this.guardian.rotation.y = this.gHeading;
       this.cone.material.color.setHex(this.gState === 'hunt' ? 0xff3a3a : this.gState === 'search' ? 0xffa04a : 0xff8aa0);
       const m = Math.floor(this.timer / 60);
@@ -269,14 +309,16 @@ export class SpiritRealm {
     if (this.phase === 'won') {
       this.wonT += dt;
       const k = Math.min(1, this.wonT / 2.5);
-      this.guardian.scale.setScalar(1.9 * (1 - k));
-      this.guardian.position.y = 0.2 + k * 2;
+      this.mixer?.update(dt);
+      const fadeK = Math.max(0, (this.wonT - 1.6) / 1.4);
+      this.guardian.scale.setScalar(this.gScale * (1 - fadeK));
       this.spirit.visible = true;
       this.spirit.position.set(this.gPos.x, 1.2 + k * 1.5 + Math.sin(t * 3) * 0.1, this.gPos.z);
       this.spirit.material.opacity = 0.6 + Math.sin(t * 6) * 0.3;
       if (this.wonT > 3) {
         this.guardian.visible = false;
-        this.guardian.scale.setScalar(1.9);
+        this.guardian.scale.setScalar(this.gScale);
+        this.play('Idle', 0);
         this.spirit.visible = false;
         this.phase = 'off';
         this.active = false;

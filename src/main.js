@@ -15,6 +15,7 @@ import { Kimodameshi } from './games/kimodameshi.js';
 import { TreasureHunt } from './town/hunt.js';
 import { LanternFinale, EMBLEMS, emblemCount } from './finale.js';
 import { SpiritRealm } from './realm.js';
+import { loadSpiritAssets } from './spiritAssets.js';
 import { S as QS } from './town/quest.js';
 import { buildBooth } from './booth.js';
 import { buildStallGoods } from './stallgoods.js';
@@ -515,6 +516,8 @@ async function boot() {
   games.goldfish = new Goldfish(ctx);
   games.shateki = new Shateki(ctx);
   games.taiko = new Taiko(ctx);
+  ui.progress(1, 'Summoning the spirits…');
+  ctx.spirits = await loadSpiritAssets();
   kimo = new Kimodameshi(ctx);
   buildBooth(world, { pos: L.ringtoss, flip: true, sign: '輪投げ', signBg: '#2e6b3a', awning: ['#3a9a4a', '#ffffff'], counter: true });
 
