@@ -741,7 +741,7 @@ export class World {
     const fog = this.scene.fog;
     keyColor([[0, '#cfe0ef'], [0.55, '#f3c29a'], [0.7, '#d9785a'], [0.82, '#3a2e55'], [1, '#0b1030']], tod, fog.color);
     fog.color.lerp(new THREE.Color('#05070d'), F * 0.85);
-    fog.density = lerp(keyLerp([[0, 0.004], [0.7, 0.007], [1, 0.011]], tod), 0.075, F);
+    fog.density = lerp(keyLerp([[0, 0.004], [0.7, 0.007], [1, 0.011]], tod), 0.075, F) + (this.fogBoost || 0) * F;
 
     this.renderer.toneMappingExposure = keyLerp([[0, 0.55], [0.6, 0.6], [1, 0.72]], tod);
     this.scene.environmentIntensity = keyLerp([[0, 0.8], [0.6, 0.45], [1, 0.12]], tod) * (1 - 0.8 * F);

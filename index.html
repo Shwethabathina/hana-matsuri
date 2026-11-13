@@ -88,6 +88,9 @@
       #fps { right: 208px; top: 14px; font: 11.5px/1.45 ui-monospace, monospace; color: #bff; display: none; padding: 6px 9px; background: rgba(0,0,0,0.55); border-radius: 8px; white-space: pre; }
       /* Cinematic vignette composited by the browser (no extra WebGL pass). */
       #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse 75% 70% at 50% 48%, rgba(0,0,0,0) 55%, rgba(12,6,4,0.38) 100%); }
+      #fear-edge { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 0.4s;
+        background: radial-gradient(ellipse 70% 65% at 50% 50%, rgba(0,0,0,0) 55%, rgba(120,0,10,0.55) 100%); }
+      body.courage #quest { display: none !important; }
       #fade { position: fixed; inset: 0; z-index: 25; background: #07040a; opacity: 0; pointer-events: none; transition: opacity 0.35s; }
       #fade.on { opacity: 1; }
       #dialogue { position: fixed; left: 50%; bottom: 34px; transform: translate(-50%, 16px); width: min(760px, 92vw); z-index: 22; padding: 16px 22px 14px;

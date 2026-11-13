@@ -71,7 +71,7 @@ resize();
 
 // ---------------------------------------------------------------- game context
 let activeGame = null;
-const ctx = { scene, camera, world, ui, fireworks, finish };
+const ctx = { scene, camera, world, ui, fireworks, finish, markDone, canvas };
 const games = {};
 
 function markDone(id) {
@@ -352,6 +352,10 @@ addEventListener('keydown', (e) => {
       break;
     case 'KeyJ':
       ui.toggleJournal();
+      break;
+    case 'KeyL':
+    case 'KeyQ':
+      kimo?.courage?.key(e.code); // Test of Courage tools: hand lantern, throw a pebble
       break;
     case 'Backquote':
       toggleDev();

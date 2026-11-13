@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { KIMO_PATH, L } from '../layout.js';
 import { SpiritPatrol } from './spirits.js';
+import { CourageChallenge } from './courage.js';
 import { G } from '../state.js';
 import { sfx } from '../audio.js';
 import { canvasTexture, damp, glowTexture, rand, signTexture } from '../util.js';
@@ -155,6 +156,9 @@ export class Kimodameshi {
     }
     // Patrolling onibi with vision cones: being seen sends the player back to the last checkpoint.
     this.spiritPatrol = new SpiritPatrol(ctx, this.curve);
+    // The Test of Courage challenge ("The Three Mystical Seals").
+    this.courage = new CourageChallenge(ctx, this);
+    for (const seal of this.seals) seal.g.visible = false;
   }
 
   makeGhost() {
@@ -180,17 +184,9 @@ export class Kimodameshi {
   }
 
   start() {
-    this.active = true;
-    this.collected = 0;
-    this.seals.forEach((s) => {
-      s.taken = false;
-      s.g.visible = true;
-    });
-    this.scares.forEach((s) => (s.fired = false));
-    this.checkpoint = { pos: this.curve.getPointAt(0.02), t: 0.02 };
-    this.spiritPatrol.start(() => this.caught());
-    this.ctx.ui.toast('Follow the dark path and collect 5 courage seals. Stay out of the spirits’ light — hide behind trees, crouch with C.');
-    this.questText();
+    // The old five-seal walk is replaced by the seal challenge (intro, difficulty, timer, spirits, fear, score).
+    for (const seal of this.seals) seal.g.visible = false;
+    this.courage.intro();
   }
 
   questText() {
@@ -333,6 +329,7 @@ export class Kimodameshi {
       }
     }
 
+    if (this.courage.running) return this.courage.update(dt, t);
     if (!this.active) return;
     this.spiritPatrol.update(dt, t);
     const pp = G.player.pos;
