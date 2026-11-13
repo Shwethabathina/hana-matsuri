@@ -65,6 +65,10 @@ const S = (fn) => (...args) => {
 };
 
 export const sfx = {
+  // Small bell cluster; v = 0..1 loudness (used for the tanuki's stolen Kagura bell).
+  jingle: S((t, v = 1) => {
+    for (let i = 0; i < 4; i++) tone(t + i * 0.07 + Math.random() * 0.03, { freq: 2300 + Math.random() * 900, gain: 0.05 * v, decay: 0.22 });
+  }),
   don: S((t, v = 1) => {
     tone(t, { freq: 150, freqEnd: 52, gain: 0.9 * v, decay: 0.45 });
     noise(t, { freq: 380, gain: 0.35 * v, decay: 0.12 });

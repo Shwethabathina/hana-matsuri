@@ -20,7 +20,7 @@ export class World {
     this.interactables = [];
     this.glowMats = []; // { mat, day, night } emissive multipliers
     this.lights = []; // lantern light sources: { pos, color, base, distance, flicker }
-    this.tod = 0; // 0 = late afternoon, 1 = full night
+    this.tod = 0.48; // 0 = late afternoon, 1 = full night; the evening starts at golden hour
     this.glow = 0;
     this.night = 0;
     this.forest = 0;

@@ -72,6 +72,54 @@ export class Villager {
     this.c.root.add(this.label);
   }
 
+  // Patrol: walk between local waypoints on the town grid, pausing at each.
+  patrolStep(dt) {
+    const P = this.def.patrol;
+    if (!P || P.length < 2) return 0;
+    if (this.pauseT > 0) {
+      this.pauseT -= dt;
+      return 0;
+    }
+    if (!this.walk?.length) {
+      this.patrolI = ((this.patrolI ?? 0) + 1) % P.length;
+      const o = this.town.root.position;
+      this.walk = this.town.findPath([this.pos.x - o.x, this.pos.z - o.z], P[this.patrolI]).map(([x, z]) => new THREE.Vector3(o.x + x, 0, o.z + z));
+      if (!this.walk.length) this.pauseT = 3;
+      return 0;
+    }
+    const n = this.walk[0];
+    const dx = n.x - this.pos.x;
+    const dz = n.z - this.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.12) {
+      this.walk.shift();
+      if (!this.walk.length) {
+        this.pauseT = 3 + Math.random() * 4;
+        this.baseHeading = this.def.patrolFacing?.[this.patrolI] ?? this.heading;
+      }
+      return 0;
+    }
+    const sp = this.def.speed ?? 0.85;
+    const step = Math.min(d, sp * dt);
+    this.pos.x += (dx / d) * step;
+    this.pos.z += (dz / d) * step;
+    this.pos.y = this.town.heightAt(this.pos.x, this.pos.z);
+    this.heading = angleDamp(this.heading, Math.atan2(dx, dz), 8, dt);
+    return sp;
+  }
+
+  // React to something this villager can actually see (perception check against the event position).
+  react(kind, pos, text) {
+    if (this.state === 'talk') return false;
+    const r = this.perception.sense(this.pos, this.heading, pos, kind === 'tanuki' ? 0.35 : 1.6);
+    if (!r.sees) return false;
+    this.lookAt = pos.clone();
+    this.lookT = 2.5;
+    if (kind === 'cheer') this.cheerT = 2.2;
+    this.say(text, 2.2);
+    return true;
+  }
+
   say(text, dur = 2.4) {
     this.bubble.userData.setText(text);
     this.bubble.visible = true;
@@ -106,12 +154,23 @@ export class Villager {
     }
     this.noticeT += dt;
 
+    // Idle villagers follow their patrol; noticing the player (or talking) stops them.
+    const moving = this.state === 'idle' && !(this.lookT > 0) ? this.patrolStep(dt) : 0;
     let target = this.baseHeading + Math.sin(t * 0.35 + this.phase) * this.scan;
     if (this.state !== 'idle') target = Math.atan2(player.pos.x - this.pos.x, player.pos.z - this.pos.z);
-    this.heading = angleDamp(this.heading, target, this.state === 'idle' ? 1.2 : 5, dt);
+    else if (this.lookT > 0) target = Math.atan2(this.lookAt.x - this.pos.x, this.lookAt.z - this.pos.z);
+    this.lookT = (this.lookT || 0) - dt;
+    this.cheerT = (this.cheerT || 0) - dt;
+    if (!moving) this.heading = angleDamp(this.heading, target, this.state === 'idle' && !(this.lookT > 0) ? 1.2 : 5, dt);
+    this.c.root.position.copy(this.pos);
     this.c.root.rotation.y = this.heading;
-    const anim = this.state === 'notice' && this.noticeT < 1.4 ? 'wave' : this.def.anim || 'idle';
-    animate(this.c, anim, 1, dt, t);
+    this.debug.position.copy(this.pos);
+    if (this.collider) {
+      this.collider.x = this.pos.x;
+      this.collider.z = this.pos.z;
+    }
+    const anim = this.cheerT > 0 ? 'cheer' : moving ? 'walk' : this.state === 'notice' && this.noticeT < 1.4 ? 'wave' : this.def.anim || 'idle';
+    animate(this.c, anim, moving ? moving * 1.4 : 1, dt, t);
 
     this.bubbleT -= dt;
     if (this.bubbleT <= 0) this.bubble.visible = false;

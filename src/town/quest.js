@@ -7,23 +7,38 @@ import { canvasTexture } from '../util.js';
 // which only succeeds from the expected state, so progress can never become inconsistent.
 export const S = {
   NOT_STARTED: 0,
-  FIND_CORD: 1, // examine the festival cart in the courtyard
-  ASK_SHOPKEEPER: 2, // ask the dango seller about the cord
-  FIND_DANGO: 3, // follow the north road to what the thief dropped
-  FIND_BELL: 4, // follow the paw prints to the hiding place
-  RETURN_BELL: 5, // bring the bell back to the organizer
-  COMPLETE: 6,
+  FIND_CORD: 1, // examine Hanae's festival cart in the courtyard
+  ASK_SHOPKEEPER: 2, // ask Kenta, the dango seller, about the crumbs
+  PLAY_DRUMS: 3, // the tanuki only comes out to the sound of the festival taiko
+  FIND_TANUKI: 4, // track the thief by its jingle and sneak up on it
+  TAKE_BELL: 5, // pick up the bell it dropped
+  RETURN_BELL: 6, // bring the bell back to Hanae
+  RING_BELL: 7, // ring it at the festival shrine to open the procession
+  COMPLETE: 8,
 };
 
 const OBJECTIVES = {
   [S.NOT_STARTED]: 'Talk to Hanae, the festival organizer',
-  [S.FIND_CORD]: 'Examine the festival cart in the courtyard',
-  [S.ASK_SHOPKEEPER]: 'Ask Kenta the dango seller about the torn cord',
-  [S.FIND_DANGO]: 'Search the north road for what the thief dropped',
-  [S.FIND_BELL]: 'Follow the paw prints to the hiding place',
-  [S.RETURN_BELL]: 'Return the Kagura Bell to the organizer',
-  [S.COMPLETE]: 'Treasure hunt complete!',
+  [S.FIND_CORD]: 'Examine Hanae’s festival cart in the courtyard',
+  [S.ASK_SHOPKEEPER]: 'Ask Kenta the dango seller about the crumbs',
+  [S.PLAY_DRUMS]: 'Return to the festival and play the taiko drums',
+  [S.FIND_TANUKI]: 'Listen for the bell — sneak up on the tanuki and grab it',
+  [S.TAKE_BELL]: 'Pick up the Kagura Bell',
+  [S.RETURN_BELL]: 'Bring the Kagura Bell back to Hanae',
+  [S.RING_BELL]: 'Ring the Kagura Bell at the festival shrine',
+  [S.COMPLETE]: 'The procession has begun — enjoy the festival',
 };
+
+// Journal entries unlocked as the story moves past each state.
+const JOURNAL = [
+  [S.FIND_CORD, 'The theft', 'The Kagura Bell, the festival’s heirloom, vanished from Hanae’s cart in the Old Town courtyard.'],
+  [S.ASK_SHOPKEEPER, 'The cart', 'A torn red-and-white bell cord, pink-and-white dango crumbs and small paw prints heading north.'],
+  [S.PLAY_DRUMS, 'Kenta’s story', 'A tanuki has been stealing dango. It hides while the town is quiet and only comes out when the festival drums play.'],
+  [S.FIND_TANUKI, 'The drums', 'The taiko sounded across the festival. Back in the Old Town, a faint jingle can be heard.'],
+  [S.TAKE_BELL, 'The thief', 'Caught the tanuki from behind — it dropped the bell and fled. Tanuki see well in front, poorly behind, and hear running feet.'],
+  [S.RETURN_BELL, 'The heirloom', 'The Kagura Bell is recovered, a little sticky with dango.'],
+  [S.RING_BELL, 'The procession', 'Hanae asked for the bell to be rung at the festival shrine to open the night procession.'],
+];
 
 export class HeirloomQuest {
   constructor(town) {
@@ -38,11 +53,15 @@ export class HeirloomQuest {
   }
 
   get clues() {
-    return (this.state > S.FIND_CORD ? 1 : 0) + (this.state > S.FIND_DANGO ? 1 : 0);
+    return (this.state > S.FIND_CORD ? 1 : 0) + (this.state > S.ASK_SHOPKEEPER ? 1 : 0) + (this.state > S.FIND_TANUKI ? 1 : 0);
   }
 
   get hasBell() {
-    return this.state === S.RETURN_BELL;
+    return this.state === S.RETURN_BELL || this.state === S.RING_BELL;
+  }
+
+  journal() {
+    return JOURNAL.filter(([st]) => this.state >= st).map(([, title, text]) => ({ title, text }));
   }
 
   onChange(fn) {
@@ -76,7 +95,8 @@ export class HeirloomQuest {
     this.points = {
       cart: [2.2, -0.9],
       dango: [2.0, -11.5],
-      bell: [-3.3, -5.3], // quiet pocket behind the west building
+      bell: [-3.3, -5.3], // moved to wherever the tanuki drops it
+      trail: [1.7, -7.0], // paw prints from the cart lead to the north path
     };
 
     // Clue 1: the festival cart the bell was taken from, with a torn red-and-white cord.
@@ -148,7 +168,7 @@ export class HeirloomQuest {
     const printMat = new THREE.MeshBasicMaterial({ color: '#3b2a1c', transparent: true, opacity: 0.75, depthWrite: false });
     const printGeo = new THREE.CircleGeometry(0.06, 8).rotateX(-Math.PI / 2);
     // Follow the real walkable route from the dango to the hiding place.
-    const route = T.findPath(this.points.dango, this.points.bell);
+    const route = T.findPath([this.points.cart[0] - 0.6, this.points.cart[1] - 0.6], this.points.trail);
     for (let i = 2; i < route.length - 1; i += 2) {
       const [x, z] = route[i];
       const [nx, nz] = route[Math.min(route.length - 1, i + 1)];
@@ -192,20 +212,61 @@ export class HeirloomQuest {
   }
 
   currentTarget() {
-    return { [S.FIND_CORD]: 'cart', [S.FIND_DANGO]: 'dango', [S.FIND_BELL]: 'bell' }[this.state] || null;
+    return { [S.FIND_CORD]: 'cart', [S.TAKE_BELL]: 'bell' }[this.state] || null;
   }
 
   syncWorld() {
     const s = this.state;
     // Clue objects only appear once the story has pointed the player towards them.
-    this.dango.visible = s === S.FIND_DANGO || s === S.FIND_BELL;
-    this.prints.visible = s === S.FIND_BELL;
-    this.bellRoot.visible = s === S.FIND_BELL;
-    this.bell.visible = s === S.FIND_BELL;
+    this.dango.visible = false;
+    this.prints.visible = s >= S.FIND_CORD && s <= S.FIND_TANUKI;
+    this.bellRoot.visible = s === S.TAKE_BELL;
+    this.bell.visible = s === S.TAKE_BELL;
+    this.nest.visible = false;
     this.cord.visible = s <= S.FIND_CORD;
   }
 
+  // Place the dropped bell (world position).
+  dropBell(pos) {
+    this.bellRoot.position.set(pos.x, this.town.heightAt(pos.x, pos.z), pos.z);
+    const o = this.town.root.position;
+    this.points.bell = [pos.x - o.x, pos.z - o.z];
+  }
+
+  // Discovery flourish: a ring of glints that expands and fades around the bell.
+  burst(pos) {
+    const scene = this.town.root.parent;
+    const n = 14;
+    const sprites = [];
+    for (let i = 0; i < n; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glintTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+      sp.position.copy(pos).add(new THREE.Vector3(0, 0.25, 0));
+      sp.userData.a = (i / n) * Math.PI * 2;
+      scene.add(sp);
+      sprites.push(sp);
+    }
+    this.bursts = { sprites, t: 0, origin: pos.clone() };
+  }
+
   update(dt, t, playerPos) {
+    if (this.bursts) {
+      const b = this.bursts;
+      b.t += dt;
+      const k = b.t / 1.3;
+      for (const sp of b.sprites) {
+        const r = 0.2 + k * 1.4;
+        sp.position.set(b.origin.x + Math.cos(sp.userData.a) * r, b.origin.y + 0.25 + k * 0.9, b.origin.z + Math.sin(sp.userData.a) * r);
+        sp.scale.setScalar(0.35 * (1 - k * 0.6));
+        sp.material.opacity = Math.max(0, 1 - k);
+      }
+      if (k >= 1) {
+        for (const sp of b.sprites) {
+          sp.parent.remove(sp);
+          sp.material.dispose();
+        }
+        this.bursts = null;
+      }
+    }
     const key = this.currentTarget();
     if (!key) {
       this.glint.visible = false;

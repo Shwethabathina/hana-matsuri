@@ -86,6 +86,7 @@ function markDone(id) {
 
 function finish(id, success, html, opts = {}) {
   if (success) markDone(id);
+  hunt?.onActivity(id); // festival activities can move the treasure hunt forward
   player.enabled = false;
   player.unlock();
   ui.panel(html, () => {
@@ -142,6 +143,8 @@ const FORTUNES = [
 ];
 
 world.cb.pray = () => {
+  // Carrying the recovered Kagura Bell: ringing it here opens the procession (quest finale).
+  if (hunt?.ringAtShrine()) return;
   world.bell.amp = 0.55;
   sfx.suzu();
   setTimeout(() => sfx.clap(), 1300);
@@ -188,6 +191,22 @@ function startFinale() {
   }, world.tod < 0.85 ? 3500 : 400);
 }
 world.cb.fireworks = startFinale;
+
+// Treasure-hunt finale: the bell rings at the shrine, night falls, the procession lanterns glow,
+// visitors gather and the fireworks begin; the quest completion screen follows the show.
+function questFinale(done) {
+  world.bell.amp = 0.8;
+  sfx.suzu();
+  setTimeout(() => sfx.clap(), 1200);
+  if (world.tod < 0.85) todTarget = 1;
+  ui.toast('The Kagura Bell rings out. The night procession begins.');
+  setTimeout(() => {
+    fireworks.startShow(() => {
+      markDone('fireworks');
+      done();
+    });
+  }, world.tod < 0.85 ? 3500 : 800);
+}
 
 // ---------------------------------------------------------------- time of day
 let autoTime = true;
@@ -297,6 +316,7 @@ document.getElementById('journal-toggle').addEventListener('click', () => ui.tog
 // ---------------------------------------------------------------- input
 const player = new Player(camera, canvas, world.colliders);
 G.player = player;
+player.canCrouch = true;
 player.place(L.start, -Math.PI / 2);
 
 let nearest = null;
@@ -534,6 +554,7 @@ async function boot() {
   hunt = new TreasureHunt({
     world, player, ui,
     onComplete: () => markDone('treasure'),
+    onFinale: (done) => questFinale(done),
     onArea: (area) => {
       applyAreaVisibility();
       document.getElementById('mapname').textContent = area === 'town' ? 'Old Town' : 'Festival street';
@@ -646,7 +667,7 @@ function frame() {
       todTarget = null;
     }
   } else if (autoTime && started) {
-    world.tod = Math.min(1, world.tod + dt / 300);
+    world.tod = Math.min(1, world.tod + dt / 480); // golden hour -> night over ~4 minutes
   }
   todSlider.value = Math.round(world.tod * 1000);
 

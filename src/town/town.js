@@ -317,6 +317,7 @@ export class Town {
   buildLights() {
     // Lantern light sources for the night (picked up by the festival's nearest-4 light pool).
     for (const [x, z] of [[0.5, 1], [0.5, 12], [1.5, -12], [-6, -4]]) this.world.addLight(this.toWorld(x, z, 3), { base: 8, distance: 14 });
+    this.buildLanternStrings();
     // Hanging paper chōchin lanterns along the courtyard and the north road; they glow after dusk.
     const paper = new THREE.MeshStandardMaterial({ color: '#d8402c', roughness: 0.7, emissive: '#ff7a3a', emissiveIntensity: 0 });
     this.world.registerGlow(paper, 0, 2.2);
@@ -348,6 +349,52 @@ export class Town {
       g.position.set(w.x, y, w.z);
       this.world.scene.add(g);
     }
+  }
+
+  // Strings of small paper lanterns strung across the streets (one instanced draw call + one line set).
+  buildLanternStrings() {
+    const runs = [
+      [[-2.6, -2.7], [3.4, -2.7]],
+      [[-2.6, 0.6], [3.4, 0.6]],
+      [[-2.6, 3.7], [3.4, 3.7]],
+      [[-2.8, -2.7], [-2.8, 3.7]],
+      [[1.2, -6.4], [1.4, -13.2]],
+      [[2.3, -6.4], [2.1, -13.2]],
+    ];
+    const pts = [];
+    const rope = [];
+    for (const [[ax, az], [bx, bz]] of runs) {
+      const a = this.toWorld(ax, az);
+      const b = this.toWorld(bx, bz);
+      const ya = this.heightAt(a.x, a.z) + 3.3;
+      const yb = this.heightAt(b.x, b.z) + 3.3;
+      const len = Math.hypot(b.x - a.x, b.z - a.z);
+      const n = Math.max(2, Math.round(len / 0.55));
+      let prev = null;
+      for (let i = 0; i <= n; i++) {
+        const u = i / n;
+        const p = new THREE.Vector3(a.x + (b.x - a.x) * u, ya + (yb - ya) * u - Math.sin(u * Math.PI) * 0.45, a.z + (b.z - a.z) * u);
+        if (prev) rope.push(prev, p);
+        prev = p;
+        if (i > 0 && i < n) pts.push(p.clone().add(new THREE.Vector3(0, -0.14, 0)));
+      }
+    }
+    const mat = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.7, emissive: '#ff8a40', emissiveIntensity: 0 });
+    this.world.registerGlow(mat, 0, 1.1); // warm candle glow after dusk
+    const geo = new THREE.SphereGeometry(0.085, 10, 8).scale(1, 1.3, 1);
+    const im = new THREE.InstancedMesh(geo, mat, pts.length);
+    const m = new THREE.Matrix4();
+    const palette = [new THREE.Color('#e0442c'), new THREE.Color('#f6e7c8'), new THREE.Color('#e0442c'), new THREE.Color('#ffb04a')];
+    pts.forEach((p, i) => {
+      im.setMatrixAt(i, m.makeTranslation(p.x, p.y, p.z));
+      im.setColorAt(i, palette[i % palette.length]);
+    });
+    im.instanceMatrix.needsUpdate = true;
+    im.instanceColor.needsUpdate = true;
+    this.world.scene.add(im);
+    const lines = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(rope), new THREE.LineBasicMaterial({ color: '#2a1d14' }));
+    this.world.scene.add(lines);
+    this.lanternStrings = im;
   }
 
   buildMinimapImage() {

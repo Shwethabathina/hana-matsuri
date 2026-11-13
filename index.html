@@ -62,6 +62,9 @@
       #quest .pip.on { background: var(--accent2); }
       #quest.done .qo { color: var(--good); }
       #quest .qd { margin-top: 4px; font-size: 14px; color: var(--accent2); font-weight: 700; }
+      #quest .qd .note { font-weight: 500; font-style: italic; font-size: 13px; color: #f3d9b0; }
+      h2.fin { font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif; font-weight: 400; font-size: 28px; letter-spacing: 1px; margin: 2px 0 10px; }
+      .modal .dlg-role { font-size: 11px; letter-spacing: 1.6px; text-transform: uppercase; color: var(--accent2); }
       #quest .arrow { display: inline-block; transition: transform 0.12s linear; }
       ol.howto { padding-left: 20px; line-height: 1.55; margin: 10px 0; }
       ol.howto li { margin: 4px 0; }
@@ -83,8 +86,26 @@
       body.menu .hud:not(#credit) { visibility: hidden; }
       #credit a { color: inherit; }
       #fps { right: 208px; top: 14px; font: 11.5px/1.45 ui-monospace, monospace; color: #bff; display: none; padding: 6px 9px; background: rgba(0,0,0,0.55); border-radius: 8px; white-space: pre; }
+      /* Cinematic vignette composited by the browser (no extra WebGL pass). */
+      #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse 75% 70% at 50% 48%, rgba(0,0,0,0) 55%, rgba(12,6,4,0.38) 100%); }
       #fade { position: fixed; inset: 0; z-index: 25; background: #07040a; opacity: 0; pointer-events: none; transition: opacity 0.35s; }
       #fade.on { opacity: 1; }
+      #dialogue { position: fixed; left: 50%; bottom: 34px; transform: translate(-50%, 16px); width: min(760px, 92vw); z-index: 22; padding: 16px 22px 14px;
+        background: linear-gradient(180deg, rgba(18,10,16,0.92), rgba(10,6,10,0.94)); border: 1px solid rgba(255,210,160,0.25); border-top: 2px solid rgba(255,190,120,0.55);
+        border-radius: 6px; box-shadow: 0 18px 50px rgba(0,0,0,0.5); opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; }
+      #dialogue.open { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+      #dialogue .dlg-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 6px; }
+      #dlg-name { font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif; font-size: 19px; color: #ffe2b8; letter-spacing: 0.5px; }
+      #dlg-role { font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); }
+      #dlg-text { font-size: 16px; line-height: 1.6; min-height: 52px; color: #fbf3e6; }
+      #dlg-text b { color: #ffd28a; font-weight: 600; }
+      #dlg-next { text-align: right; font-size: 11px; letter-spacing: 1.5px; color: rgba(255,220,180,0.35); margin-top: 4px; transition: color 0.2s; }
+      #dlg-next.ready { color: rgba(255,220,180,0.85); animation: nudge 1.4s ease-in-out infinite; }
+      @keyframes nudge { 50% { transform: translateX(3px); } }
+      #qjournal .jh { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent2); }
+      #qjournal .jo { font-size: 12.5px; margin: 4px 0 6px; }
+      #qjournal .je { font-size: 12px; color: var(--muted); margin: 5px 0; line-height: 1.4; }
+      #qjournal .je b { display: block; color: var(--ink); font-weight: 600; }
       .dlg-name { font-size: 12px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--accent2); }
       .dlg-text { font-size: 16px; }
       .choices { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
@@ -128,6 +149,7 @@
   </head>
   <body class="menu">
     <canvas id="c"></canvas>
+    <div id="vignette"></div>
 
     <div id="topleft" class="hud card">
       <h1>Hana Matsuri <span class="jp">花祭り</span></h1>
@@ -136,6 +158,7 @@
       <div id="journal">
         <ul id="objectives"></ul>
         <div id="patterns"></div>
+        <div id="qjournal"></div>
       </div>
       <div id="journal-toggle"><span class="key" style="font-size:10px;padding:0 5px">J</span>Festival journal</div>
     </div>
@@ -168,6 +191,11 @@
     <div id="fps" class="hud"></div>
     <div id="flash"></div>
     <div id="fade"></div>
+    <div id="dialogue">
+      <div class="dlg-head"><span id="dlg-name"></span><span id="dlg-role"></span></div>
+      <div id="dlg-text"></div>
+      <div id="dlg-next">E  next</div>
+    </div>
 
     <div id="start" class="overlay">
       <div id="menu">

@@ -20,6 +20,7 @@ export class Player {
     this.shake = 0;
     this.lastStep = 0;
     this.bounds = undefined; // collision bounds override (undefined = festival bounds)
+    this.crouch = 0; // 0 standing .. 1 crouched (hold C): slower, quieter, lower eye height
     this.slide = false; // axis-separated sliding movement (used in the town)
     this.slideRadius = 0.22;
     this.groundAt = null; // optional (x, z) => ground height, used on the town's raised stone floors
@@ -66,7 +67,10 @@ export class Player {
       if (k.has('KeyS')) wish.sub(f);
       if (k.has('KeyD')) wish.add(r);
       if (k.has('KeyA')) wish.sub(r);
-      const speed = k.has('ShiftLeft') || k.has('ShiftRight') ? 6.2 : 3.4;
+      const crouching = this.canCrouch && k.has('KeyC');
+      this.crouch += ((crouching ? 1 : 0) - this.crouch) * (1 - Math.exp(-10 * dt));
+      this.running = !crouching && (k.has('ShiftLeft') || k.has('ShiftRight'));
+      const speed = crouching ? 1.7 : this.running ? 6.2 : 3.4;
       if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed);
       // Smooth acceleration.
       this.vel.lerp(wish, 1 - Math.exp(-10 * dt));
@@ -98,7 +102,7 @@ export class Player {
     const c = this.camera;
     const bobY = Math.sin(this.bob * 2) * 0.035 * Math.min(1, this.vel.length() / 3);
     const sh = this.shake * this.shake;
-    c.position.set(this.pos.x + (Math.random() - 0.5) * sh * 0.15, this.pos.y + EYE + bobY + (Math.random() - 0.5) * sh * 0.15, this.pos.z);
+    c.position.set(this.pos.x + (Math.random() - 0.5) * sh * 0.15, this.pos.y + EYE - this.crouch * 0.6 + bobY + (Math.random() - 0.5) * sh * 0.15, this.pos.z);
     c.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
   }
 }
