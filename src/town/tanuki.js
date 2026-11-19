@@ -170,8 +170,30 @@ export class Tanuki {
     return r;
   }
 
+  // Held during the struggle: it squirms in place (the struggle itself is run by the hunt).
+  hold() {
+    this.state = 'held';
+    this.path = [];
+  }
+
+  // Wriggled free: bolts to the farthest hiding spot, alarmed.
+  escapeFrom(playerPos) {
+    this.state = 'flee';
+    this.escapes++;
+    this.suspicion = 1;
+    this.goTo(this.farthestSpot(playerPos));
+    this.hooks.onFlee?.(this.pos.clone(), this.escapes);
+  }
+
   update(dt, t, player) {
     if (this.state === 'hidden') return;
+    if (this.state === 'held') {
+      this.root.rotation.z = Math.sin(t * 28) * 0.25; // squirming
+      this.tail.rotation.y = Math.sin(t * 20) * 0.8;
+      this.mark.visible = false;
+      return;
+    }
+    this.root.rotation.z = 0;
     const g = this.root;
     let speed = 0;
 

@@ -130,12 +130,8 @@ export class TreasureHunt {
     });
     this.world.interactables.push({
       id: 'tanuki', pos: this.tanuki.pos, radius: 1.5, priority: true,
-      label: 'Grab the tanuki', enabled: () => inTown() && Q.state === S.FIND_TANUKI && this.tanuki.canBeCaught,
-      action: () => {
-        sfx.splash?.(0.4);
-        this.player.shake = 0.15;
-        this.tanuki.catch(this.player.pos);
-      },
+      label: 'Grab the tanuki', enabled: () => inTown() && !this.struggle && Q.state === S.FIND_TANUKI && this.tanuki.canBeCaught,
+      action: () => this.startStruggle(),
     });
     this.world.interactables.push({
       id: 'clue-bell', pos: this.bellPos, radius: 1.6, priority: true,
@@ -177,6 +173,85 @@ export class TreasureHunt {
       Q.advance(S.TAKE_BELL, S.RETURN_BELL);
       this.ui.toast('Journal updated: The heirloom');
     });
+  }
+
+  // ---------------------------------------------------------------- bell recovery: a timing struggle
+  // Grabbing the tanuki is only the start: a marker swings across a bar and the player must press
+  // Space inside the target zone. Each hit shrinks the zone and speeds the marker; three hits pry the
+  // bell loose. Two misses (or hesitating too long) and it wriggles free and bolts — sneak up again.
+  startStruggle() {
+    if (this.struggle) return;
+    sfx.splash?.(0.4);
+    this.player.shake = 0.15;
+    this.player.enabled = false;
+    this.tanuki.hold();
+    this.struggle = { hits: 0, misses: 0, t: 0, phase: Math.random() * 6, speed: 2.4, zone: 0.34, center: 0.5 + (Math.random() - 0.5) * 0.4, time: 9, flash: 0 };
+    this.struggleKey = (e) => {
+      if (e.code !== 'Space' && e.code !== 'KeyE') return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      if (!e.repeat) this.struggleHit();
+    };
+    addEventListener('keydown', this.struggleKey, true);
+    this.ui.toast('It squirms! Press SPACE when the marker is inside the gold zone.');
+  }
+
+  markerPos() {
+    const s = this.struggle;
+    return 0.5 + 0.5 * Math.sin(s.phase + s.t * s.speed);
+  }
+
+  struggleHit() {
+    const s = this.struggle;
+    if (!s) return;
+    const m = this.markerPos();
+    if (Math.abs(m - s.center) <= s.zone / 2) {
+      s.hits++;
+      s.flash = 0.25;
+      sfx.chime();
+      this.player.shake = 0.1;
+      if (s.hits >= 3) return this.endStruggle(true);
+      s.zone *= 0.72; // tighter
+      s.speed *= 1.3; // faster
+      s.center = 0.2 + Math.random() * 0.6;
+    } else {
+      s.misses++;
+      s.flash = -0.25;
+      sfx.fail?.();
+      if (s.misses >= 2) return this.endStruggle(false);
+    }
+  }
+
+  endStruggle(won) {
+    removeEventListener('keydown', this.struggleKey, true);
+    this.struggle = null;
+    this.ui.gameHud(null);
+    this.player.enabled = true;
+    if (won) {
+      this.quest.note('The struggle', 'Held on through the tanuki’s wriggling until it let go of the bell.');
+      this.tanuki.catch(this.player.pos);
+    } else {
+      this.tanuki.escapeFrom(this.player.pos);
+      this.ui.toast('It wriggled free and bolted! Track it down and try again — time your grip.');
+    }
+  }
+
+  updateStruggle(dt) {
+    const s = this.struggle;
+    s.t += dt;
+    s.time -= dt;
+    s.flash += s.flash > 0 ? -dt : dt;
+    if (Math.abs(s.flash) < dt) s.flash = 0;
+    if (s.time <= 0) return this.endStruggle(false);
+    const m = this.markerPos();
+    const z0 = (s.center - s.zone / 2) * 100;
+    const col = s.flash > 0 ? '#7cf29a' : s.flash < 0 ? '#ff5a5a' : '#ffd24a';
+    this.ui.gameHud(`<div class="gh-title">Hold on to the thief!</div>
+      <div>Press <b>SPACE</b> inside the gold zone · grip <b>${s.hits} / 3</b> · slips <b>${s.misses} / 2</b> · ${Math.ceil(s.time)}s</div>
+      <div style="position:relative;width:420px;max-width:80vw;height:22px;margin:8px auto;background:rgba(255,255,255,0.12);border-radius:6px;overflow:hidden">
+        <div style="position:absolute;left:${z0}%;width:${s.zone * 100}%;top:0;bottom:0;background:${col};opacity:0.55"></div>
+        <div style="position:absolute;left:calc(${m * 100}% - 3px);width:6px;top:-2px;bottom:-2px;background:#fff;box-shadow:0 0 8px #fff"></div>
+      </div>`);
   }
 
   // Called by the festival when an activity finishes (the hunt reaches into the festival's games).
@@ -513,6 +588,7 @@ export class TreasureHunt {
   update(dt, t) {
     if (this.area !== 'town') return this.updateFestival(dt);
     const p = this.player;
+    if (this.struggle) this.updateStruggle(dt);
     this.tanuki.update(dt, t, p);
     // The stolen bell jingles as the tanuki moves: louder when close, muffled behind buildings.
     if (this.quest.state === S.FIND_TANUKI && this.tanuki.root.visible) {
@@ -526,7 +602,7 @@ export class TreasureHunt {
       this.noteT = (this.noteT || 0) - dt;
       if (this.noteT <= 0) {
         this.noteT = 0.25;
-        const hint = this.tanuki.state === 'flee' ? 'It saw you — let it settle down' : d < 4 ? 'The jingling is right here' : d < 9 ? 'The jingle is close' : d < 20 ? 'A faint jingle somewhere nearby' : 'Search the town and listen';
+        const hint = this.struggle ? 'Hold on!' : this.tanuki.state === 'flee' ? 'It saw you — let it settle down' : d < 4 ? 'The jingling is right here' : d < 9 ? 'The jingle is close' : d < 20 ? 'A faint jingle somewhere nearby' : 'Search the town and listen';
         this.ui.questNote(`${hint}${p.crouch > 0.5 ? ' · crouching' : ''}`);
       }
     }

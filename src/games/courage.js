@@ -300,6 +300,7 @@ export class CourageChallenge {
     // Trial 3 — the Rokurokubi and her seal; safe lanterns on the escape route.
     this.spawnHunter();
     this.buildSafeZones();
+    this.buildHides();
   }
 
   // Stone lanterns whose light the Rokurokubi cannot enter.
@@ -331,6 +332,74 @@ export class CourageChallenge {
       const light = this.ctx.world.addLight(new THREE.Vector3(pos.x, 1.1, pos.z), { color: 0xffb070, base: 5, distance: 7, flicker: 0.2 });
       this.safe.push({ pos, r: 2.2, ring, light });
     }
+  }
+
+  // Reed clumps to hide in: along trial 1, around the guardian's seal, and on the escape route.
+  buildHides() {
+    this.hides = [];
+    const spots = [];
+    const near = (center, rMin, rMax) => {
+      for (let k = 0; k < 60; k++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = rMin + Math.random() * (rMax - rMin);
+        const q = new THREE.Vector3(center.x + Math.cos(a) * r, 0, center.z + Math.sin(a) * r);
+        if (this.isFree(q, 0.6) && !spots.some((o) => o.distanceTo(q) < 4)) return q;
+      }
+      return null;
+    };
+    const pathPt = (t, side) => {
+      const p = this.curve.getPointAt(t);
+      const tan = this.curve.getTangentAt(t);
+      for (const sd of [side, -side, side * 1.5, -side * 1.5]) {
+        const q = new THREE.Vector3(p.x - tan.z * sd, 0, p.z + tan.x * sd);
+        if (this.isFree(q, 0.6) && !spots.some((o) => o.distanceTo(q) < 4)) return q;
+      }
+      return null;
+    };
+    for (const q of [pathPt(0.17, 2), pathPt(0.27, 2), near(this.seals[1].pos, 4, 7), near(this.seals[1].pos, 5, 8), pathPt(0.78, 2), pathPt(0.87, 2), near(this.seals[2].pos, 4, 7)]) if (q) spots.push(q);
+    const reedMat = new THREE.MeshStandardMaterial({ color: '#4a5a2a', roughness: 1 });
+    const tipMat = new THREE.MeshStandardMaterial({ color: '#8a7a4a', roughness: 1 });
+    for (const pos of spots) {
+      const g = new THREE.Group();
+      for (let i = 0; i < 26; i++) {
+        const h = 1.2 + Math.random() * 0.7;
+        const blade = new THREE.Mesh(new THREE.ConeGeometry(0.035, h, 4), i % 5 ? reedMat : tipMat);
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.random() * 0.55;
+        blade.position.set(Math.cos(a) * r, h / 2, Math.sin(a) * r);
+        blade.rotation.set((Math.random() - 0.5) * 0.3, 0, (Math.random() - 0.5) * 0.3);
+        g.add(blade);
+      }
+      g.position.copy(pos);
+      this.ctx.world.scene.add(g);
+      this.props.push(g);
+      const spot = { pos, g };
+      this.hides.push(spot);
+      this.ctx.world.addInteractable({
+        id: 'courage-hide', pos, radius: 1.4,
+        label: () => (this.hidden === spot ? 'Leave the reeds' : 'Hide in the reeds'),
+        enabled: () => this.running && this.hides?.includes(spot) && (!this.hidden || this.hidden === spot),
+        action: () => this.toggleHide(spot),
+      });
+    }
+  }
+
+  // Hiding: invisible to spirits unless one saw you dive in — then it comes to drag you out.
+  toggleHide(spot) {
+    const P = G.player;
+    if (this.hidden === spot) {
+      this.hidden = null;
+      this.ctx.ui.toast('You slip out of the reeds.');
+      return;
+    }
+    this.hidden = spot;
+    // Only a spirit with real line of sight at this moment sees the player dive into the reeds.
+    this.hideSeen = this.spirits.some((s) => s.realSeen && (s.state === 'chase' || s.state === 'investigate'));
+    this.lastKnown = P.pos.clone();
+    P.place(spot.pos, P.yaw);
+    P.vel.set(0, 0, 0);
+    sfx.whisper?.();
+    this.ctx.ui.toast(this.hideSeen ? 'It saw you hide…' : 'Hidden. Hold still and wait for it to pass.');
   }
 
   inSafe(p) {
@@ -467,6 +536,8 @@ export class CourageChallenge {
     this.safe = [];
     this.lastSafe = null;
     this.revealed = false;
+    this.hidden = null;
+    this.hideSeen = false;
     this.lanternOn = true;
     this.pebbles = 3;
     this.gate = null;
@@ -581,9 +652,9 @@ export class CourageChallenge {
   banner(n) {
     const T = {
       1: ['Trial 1 · Darkness and Light', 'The seal only shows itself in your lantern’s light — but these spirits are drawn to light. Flash it, then go dark (L).'],
-      2: ['Trial 2 · Outwit the Guardian', 'Its gaze never leaves the seal. Throw a pebble (Q) away from it, then take the seal while it searches.'],
+      2: ['Trial 2 · Outwit the Guardian', 'Its gaze never leaves the seal. Throw a pebble (Q) away from it and take the seal while it searches — hide in the reeds (E) if it turns back.'],
       3: ['Trial 3 · Escape the Rokurokubi', 'Her seal rests at her lantern. Reach it unseen — crouch (C) and keep trees between you.'],
-      4: ['Escape!', 'She is awake. Dash from stone lantern to stone lantern — she cannot enter their light — and reach the shrine gate.'],
+      4: ['Escape!', 'She is awake. Dash from stone lantern to stone lantern (she cannot enter their light), or vanish into the reeds before she sees — then reach the shrine gate.'],
     };
     this.trialText = T[n];
     this.ctx.ui.toast(T[n][0]);
@@ -599,6 +670,8 @@ export class CourageChallenge {
   }
 
   cleanupExtras() {
+    this.hidden = null;
+    this.hides = [];
     for (const z of this.safe || []) z.light.pos.set(0, -50, 0);
     this.safe = [];
     for (const p of this.props || []) this.ctx.world.scene.remove(p);
@@ -635,7 +708,7 @@ export class CourageChallenge {
     this.ctx.ui.gameHud(`<div class="gh-title">肝試し · ${objective}</div>
       <div>Seals <b>${this.found} / 3</b> · <b>${m}:${s}</b>${gate} · Fear <b>${fear}%</b> ${alarm ? `· <span style="color:#ff8a7a">${alarm}</span>` : ''}</div>
       <div class="gf-dev">${this.trialText?.[1] || ''}</div>
-      <div class="gf-dev">Lantern ${this.lanternOn ? 'lit' : 'dark'} · oil ${Math.round(this.fuel)}% (L) · pebbles ${this.pebbles} (Q) · crouch C${this.inSafe(G.player.pos) ? ' · <b style="color:#ffc27a">safe in the lantern light</b>' : ''}</div>
+      <div class="gf-dev">Lantern ${this.lanternOn ? 'lit' : 'dark'} · oil ${Math.round(this.fuel)}% (L) · pebbles ${this.pebbles} (Q) · crouch C${this.inSafe(G.player.pos) ? ' · <b style="color:#ffc27a">safe in the lantern light</b>' : ''}${this.hidden ? ` · <b style="color:#9ad88a">${this.hideSeen ? 'hiding — but it saw you!' : 'hidden in the reeds'}</b>` : ''}</div>
       <div class="bar"><span style="width:${fear}%;background:${fear > 70 ? '#ff5a5a' : fear > 40 ? '#ffb05a' : '#7cf29a'}"></span></div>`);
   }
 
@@ -750,6 +823,12 @@ export class CourageChallenge {
     for (const s of this.spirits) threat = Math.max(threat, this.updateSpirit(s, dt, t, P));
 
     // Fear: rises with threat, recovers when safe.
+    if (this.hidden) {
+      P.vel.set(0, 0, 0);
+      P.pos.x = this.hidden.pos.x;
+      P.pos.z = this.hidden.pos.z;
+      if (!this.hideSeen) threat = 0;
+    }
     const zone = this.inSafe(P.pos);
     if (zone) threat = 0; // the stone lantern's light is a refuge
     if (threat > 0) this.fear = Math.min(100, this.fear + threat * dt);
@@ -791,8 +870,9 @@ export class CourageChallenge {
       const dx = P.pos.x - s.pos.x;
       const dz = P.pos.z - s.pos.z;
       const inCone = d < R && (Math.sin(s.heading) * dx + Math.cos(s.heading) * dz) / (d || 1) > s.fovCos;
-      s.seen = s.stun <= 0 && inCone && this.clear(s.pos.x, s.pos.z, P.pos.x, P.pos.z);
-      s.heard = s.stun <= 0 && P.running && P.vel.length() > 1 && d < 5;
+      s.realSeen = s.stun <= 0 && inCone && this.clear(s.pos.x, s.pos.z, P.pos.x, P.pos.z); // true line of sight right now
+      s.seen = s.realSeen && (!this.hidden || this.hideSeen);
+      s.heard = s.stun <= 0 && !this.hidden && P.running && P.vel.length() > 1 && d < 5;
       s.closeness = Math.max(0, 1 - d / R);
     }
     if (s.aggressive) {
@@ -801,7 +881,17 @@ export class CourageChallenge {
       s.state = 'chase';
       s.seen = true;
       const z = this.inSafe(P.pos);
-      if (z) {
+      if (this.hidden && !this.hideSeen) {
+        // Lost you in the reeds: she searches around where she last saw you.
+        s.seen = false;
+        s.searchT = (s.searchT || 0) - dt;
+        if (s.searchT <= 0 || !s.target) {
+          s.searchT = 2.2;
+          const a = Math.random() * Math.PI * 2;
+          s.target = this.lastKnown.clone().add(new THREE.Vector3(Math.cos(a) * 4, 0, Math.sin(a) * 4));
+          s.route = this.path(s.pos, s.target);
+        }
+      } else if (z) {
         const away = new THREE.Vector3(s.pos.x - z.pos.x, 0, s.pos.z - z.pos.z);
         if (away.lengthSq() < 1e-4) away.set(1, 0, 0);
         away.normalize().multiplyScalar(z.r + 1.2);
@@ -841,7 +931,11 @@ export class CourageChallenge {
         s.sus = 0.3;
         s.route = this.path(s.pos, s.home);
       }
-      if (d < 1.0 && s.stun <= 0 && !this.inSafe(P.pos)) {
+      if (d < 1.0 && s.stun <= 0 && !this.inSafe(P.pos) && (!this.hidden || this.hideSeen)) {
+        if (this.hidden) {
+          this.hidden = null; // dragged out of the reeds
+          this.ctx.ui.toast('It pulled you out of the reeds!');
+        }
         // Caught: fear spikes, the player is shoved away, the spirit drifts back to its post.
         this.caught++;
         this.fear = Math.min(100, this.fear + 18);
