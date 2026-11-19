@@ -88,6 +88,31 @@
       #fps { right: 208px; top: 14px; font: 11.5px/1.45 ui-monospace, monospace; color: #bff; display: none; padding: 6px 9px; background: rgba(0,0,0,0.55); border-radius: 8px; white-space: pre; }
       /* Cinematic vignette composited by the browser (no extra WebGL pass). */
       #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse 75% 70% at 50% 48%, rgba(0,0,0,0) 55%, rgba(12,6,4,0.38) 100%); }
+      #duel { position: fixed; left: 50%; bottom: 120px; transform: translateX(-50%); z-index: 21; width: min(620px, 92vw); padding: 14px 18px 16px; display: none;
+        background: rgba(14,8,12,0.88); border: 1px solid rgba(255,210,160,0.3); border-radius: 10px; text-align: center; box-shadow: 0 16px 40px rgba(0,0,0,0.5); }
+      #duel.on { display: block; }
+      #duel .dt { font-family: "Yu Mincho", Georgia, serif; font-size: 22px; color: #ffe2b8; }
+      #duel .ds { font-size: 13px; color: var(--muted); margin-top: 2px; }
+      #duel .track { position: relative; height: 34px; margin: 12px 0 8px; background: rgba(255,255,255,0.1); border-radius: 8px; overflow: hidden; }
+      #duel .zone { position: absolute; top: 0; bottom: 0; background: linear-gradient(180deg, #ffd24a, #e8a52a); box-shadow: 0 0 18px rgba(255,210,74,0.7); transition: left 0.15s, width 0.15s; }
+      #duel .marker { position: absolute; top: -4px; bottom: -4px; width: 6px; margin-left: -3px; background: #fff; border-radius: 3px; box-shadow: 0 0 12px #fff; }
+      #duel .pips { font-size: 20px; letter-spacing: 6px; }
+      #duel .pips .on { color: #7cf29a; } #duel .pips .off { color: rgba(255,255,255,0.25); } #duel .pips .x { color: #ff5a5a; }
+      #duel .fb { height: 22px; font-weight: 800; font-size: 18px; transition: opacity 0.3s; }
+      #duel.hit { animation: duelHit 0.25s; } #duel.miss { animation: duelMiss 0.3s; }
+      @keyframes duelHit { 50% { box-shadow: 0 0 40px rgba(124,242,154,0.8); } }
+      @keyframes duelMiss { 25% { transform: translateX(calc(-50% - 8px)); } 75% { transform: translateX(calc(-50% + 8px)); } }
+      #reeds { position: fixed; inset: 0; pointer-events: none; z-index: 3; opacity: 0; transition: opacity 0.35s;
+        background: repeating-linear-gradient(95deg, rgba(20,34,14,0.0) 0 22px, rgba(28,44,18,0.55) 22px 30px, rgba(20,34,14,0.0) 30px 58px),
+                    radial-gradient(ellipse 60% 55% at 50% 50%, rgba(0,0,0,0) 45%, rgba(10,22,8,0.92) 100%); }
+      #reeds.on { opacity: 1; }
+      #reeds.seen { background: repeating-linear-gradient(95deg, rgba(40,10,10,0) 0 22px, rgba(60,16,16,0.5) 22px 30px, rgba(40,10,10,0) 30px 58px),
+                    radial-gradient(ellipse 60% 55% at 50% 50%, rgba(0,0,0,0) 45%, rgba(60,6,6,0.9) 100%); }
+      #hidechip { position: fixed; left: 50%; top: 172px; transform: translateX(-50%); z-index: 6; padding: 6px 14px; border-radius: 999px; font-weight: 800; font-size: 14px; letter-spacing: 0.5px; display: none; }
+      #hidechip.on { display: block; }
+      #danger { position: fixed; left: 50%; top: 50%; width: 0; height: 0; z-index: 5; pointer-events: none; display: none; }
+      #danger.on { display: block; }
+      #danger span { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; color: #ff4a4a; font-size: 30px; text-align: center; line-height: 32px; text-shadow: 0 0 12px #ff0000; }
       #fear-edge { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 0.4s;
         background: radial-gradient(ellipse 70% 65% at 50% 50%, rgba(0,0,0,0) 55%, rgba(120,0,10,0.55) 100%); }
       body.courage #quest { display: none !important; }

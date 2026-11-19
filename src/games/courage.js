@@ -91,6 +91,13 @@ export class CourageChallenge {
     this.fearEl = document.createElement('div');
     this.fearEl.id = 'fear-edge';
     document.body.appendChild(this.fearEl);
+    // Hiding feedback: reed frame over the view + a status chip; and an edge arrow pointing at danger.
+    this.reedEl = Object.assign(document.createElement('div'), { id: 'reeds' });
+    this.chipEl = Object.assign(document.createElement('div'), { id: 'hidechip' });
+    this.dangerEl = Object.assign(document.createElement('div'), { id: 'danger' });
+    this.dangerEl.innerHTML = '<span>▲</span>';
+    document.body.append(this.reedEl, this.chipEl, this.dangerEl);
+    this.hinted = new Set();
   }
 
   // ------------------------------------------------------------------ navigation grid of the forest
@@ -389,7 +396,7 @@ export class CourageChallenge {
     const P = G.player;
     if (this.hidden === spot) {
       this.hidden = null;
-      this.ctx.ui.toast('You slip out of the reeds.');
+      sfx.rustle(0.6);
       return;
     }
     this.hidden = spot;
@@ -398,8 +405,8 @@ export class CourageChallenge {
     this.lastKnown = P.pos.clone();
     P.place(spot.pos, P.yaw);
     P.vel.set(0, 0, 0);
-    sfx.whisper?.();
-    this.ctx.ui.toast(this.hideSeen ? 'It saw you hide…' : 'Hidden. Hold still and wait for it to pass.');
+    sfx.rustle(1);
+    if (this.hideSeen) sfx.whisper?.();
   }
 
   inSafe(p) {
@@ -538,6 +545,7 @@ export class CourageChallenge {
     this.revealed = false;
     this.hidden = null;
     this.hideSeen = false;
+    this.hinted = new Set();
     this.lanternOn = true;
     this.pebbles = 3;
     this.gate = null;
@@ -592,7 +600,7 @@ export class CourageChallenge {
       if (this.hunter) {
         this.hunter.state = 'chase';
         this.hunter.aggressive = true;
-        this.hunter.stun = 1.2; // a beat to react: her neck rises, then she comes
+        this.hunter.stun = 2.2; // a readable beat: her neck rises with a scream, then she comes
       }
       for (const z of this.safe) z.ring.material.opacity = 0.55;
       sfx.scare();
@@ -603,6 +611,7 @@ export class CourageChallenge {
 
   end(won, reason) {
     if (!this.running) return;
+    this.lastEnd = { won, reason, found: this.found, caught: this.caught, fear: Math.round(this.fear) };
     this.running = false;
     this.kimo.active = false;
     for (const s of this.spirits) this.ctx.world.scene.remove(s.g);
@@ -670,6 +679,9 @@ export class CourageChallenge {
   }
 
   cleanupExtras() {
+    this.reedEl?.classList.remove('on', 'seen');
+    this.chipEl?.classList.remove('on');
+    this.dangerEl?.classList.remove('on');
     this.hidden = null;
     this.hides = [];
     for (const z of this.safe || []) z.light.pos.set(0, -50, 0);
@@ -847,14 +859,63 @@ export class CourageChallenge {
     if (zone) this.lastSafe = zone;
     if (this.found === 3) {
       this.exitBeacon.material.opacity = 0.6 + Math.sin(t * 3) * 0.25;
-      for (const z of this.safe) z.ring.material.opacity = 0.4 + Math.sin(t * 4) * 0.15;
+      for (const z of this.safe) {
+        z.ring.material.opacity = 0.55 + Math.sin(t * 4) * 0.25;
+        z.ring.scale.setScalar(1 + Math.sin(t * 4) * 0.03);
+      }
       if (Math.hypot(P.pos.x - this.exit.x, P.pos.z - this.exit.z) < 2.6) return this.end(true);
     }
+    this.feedback(dt, P);
     this.hudT = (this.hudT || 0) - dt;
     if (this.hudT <= 0) {
       this.hudT = 0.2;
       this.hud();
     }
+  }
+
+  // Readable state for the player: hidden / seen / searched, the Rokurokubi's direction and distance,
+  // and one-time hints the first time a mechanic becomes relevant.
+  feedback(dt, P) {
+    const hunter = this.hunter;
+    const searching = this.spirits.some((s) => s.state === 'investigate' || (s.aggressive && this.hidden && !this.hideSeen));
+    this.reedEl.classList.toggle('on', !!this.hidden);
+    this.reedEl.classList.toggle('seen', !!this.hidden && this.hideSeen);
+    let chip = '';
+    if (this.hidden) chip = this.hideSeen ? ['IT SAW YOU HIDE — get out and run!', '#ff4a4a', '#fff'] : searching ? ['Hidden · something is searching nearby — stay still', '#e8a52a', '#1a1004'] : ['Hidden in the reeds', '#3a7a3a', '#eaffea'];
+    else if (this.inSafe(P.pos) && hunter?.aggressive) chip = ['Safe in the lantern light — she cannot enter', '#c98a2a', '#1a1004'];
+    this.chipEl.classList.toggle('on', !!chip);
+    if (chip) Object.assign(this.chipEl.style, { background: chip[1], color: chip[2] }), (this.chipEl.textContent = chip[0]);
+    // Danger arrow: where the Rokurokubi is, relative to where the player looks (only while she hunts).
+    if (hunter && hunter.state !== 'patrol' && !this.inSafe(P.pos)) {
+      const dx = hunter.pos.x - P.pos.x;
+      const dz = hunter.pos.z - P.pos.z;
+      const d = Math.hypot(dx, dz);
+      const f = P.forward;
+      const ang = Math.atan2(f.x * dz - f.z * dx, f.x * dx + f.z * dz);
+      const r = Math.min(innerWidth, innerHeight) * 0.36;
+      this.dangerEl.classList.toggle('on', d < 16);
+      this.dangerEl.style.transform = `translate(${Math.sin(ang) * r}px, ${-Math.cos(ang) * r}px) rotate(${ang}rad)`;
+      this.dangerEl.style.opacity = Math.max(0.35, 1 - d / 16);
+      this.whisperT = (this.whisperT || 0) - dt;
+      if (d < 9 && this.whisperT <= 0) {
+        this.whisperT = 1.2 + d * 0.15;
+        sfx.whisper?.();
+      }
+    } else this.dangerEl.classList.remove('on');
+    // One-time contextual hints.
+    // At most one new hint every few seconds, so they never pile up.
+    this.hintT = (this.hintT || 0) - dt;
+    const once = (k, msg) => {
+      if (this.hinted.has(k) || this.hintT > 0) return;
+      this.hinted.add(k);
+      this.hintT = 4;
+      this.ctx.ui.toast(msg);
+    };
+    if (this.hides?.some((h) => h.pos.distanceTo(P.pos) < 3.5)) once('reeds', 'Tall reeds — press E to hide inside. Spirits lose you unless they watch you go in.');
+    if (this.trial === 2 && this.guard && this.guard.pos.distanceTo(P.pos) < 11) once('pebble', 'The guardian watches the seal. Throw a pebble (Q) somewhere away from it to make it look.');
+    if (this.trial === 1 && P.pos.distanceTo(this.seals[0].pos) < 12) once('lantern', 'The seal is near — only lantern light (L) reveals it.');
+    if (P.crouch > 0.5 && this.spirits.some((s) => s.state === 'chase' && !s.aggressive)) once('run', 'It is chasing you — crouching is too slow to escape. Stand up and RUN (Shift), then hide.');
+    if (hunter?.aggressive && !this.hinted.has('wake')) once('wake', 'She is awake! Run (Shift) to the glowing stone lanterns — she cannot enter their light.');
   }
 
   // Returns the fear rate this spirit causes right now.
@@ -988,7 +1049,7 @@ export class CourageChallenge {
         s.heading = angleDamp(s.heading, s.homeHeading + Math.sin(t * 0.6 + s.home.x) * (s.guard ? 0.45 : 0.9), 2, dt);
       }
     } else {
-      const sp = s.state === 'chase' ? this.d.chase + (s.kind === 'hunter' ? 0.3 : 0) + (s.aggressive ? 0.5 : 0) : 1.3;
+      const sp = s.state === 'chase' ? (s.aggressive ? Math.min(3.1, this.d.chase + 0.3) : this.d.chase + (s.kind === 'hunter' ? 0.3 : 0)) : 1.3;
       const next = s.route[0];
       if (next) {
         const dx = next.x - s.pos.x;

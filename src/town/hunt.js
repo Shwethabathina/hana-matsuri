@@ -185,7 +185,10 @@ export class TreasureHunt {
     this.player.shake = 0.15;
     this.player.enabled = false;
     this.tanuki.hold();
-    this.struggle = { hits: 0, misses: 0, t: 0, phase: Math.random() * 6, speed: 2.4, zone: 0.34, center: 0.5 + (Math.random() - 0.5) * 0.4, time: 9, flash: 0 };
+    this.struggle = { hits: 0, misses: 0, t: 0, ready: 1.1, phase: -Math.PI / 2, speed: 2.0, zone: 0.36, center: 0.5 + (Math.random() - 0.5) * 0.4, time: 10, fb: '', fbT: 0 };
+    this.duelEl = this.duelEl || Object.assign(document.createElement('div'), { id: 'duel' });
+    if (!this.duelEl.parentNode) document.body.appendChild(this.duelEl);
+    this.duelEl.classList.add('on');
     this.struggleKey = (e) => {
       if (e.code !== 'Space' && e.code !== 'KeyE') return;
       e.stopImmediatePropagation();
@@ -193,42 +196,58 @@ export class TreasureHunt {
       if (!e.repeat) this.struggleHit();
     };
     addEventListener('keydown', this.struggleKey, true);
-    this.ui.toast('It squirms! Press SPACE when the marker is inside the gold zone.');
+    sfx.don?.(0.4);
   }
 
   markerPos() {
     const s = this.struggle;
-    return 0.5 + 0.5 * Math.sin(s.phase + s.t * s.speed);
+    return 0.5 + 0.5 * Math.sin(s.phase + Math.max(0, s.t - s.ready) * s.speed);
+  }
+
+  duelFx(cls, text, color) {
+    const s = this.struggle;
+    s.fb = `<span style="color:${color}">${text}</span>`;
+    s.fbT = 0.7;
+    this.duelEl.classList.remove('hit', 'miss');
+    void this.duelEl.offsetWidth;
+    this.duelEl.classList.add(cls);
   }
 
   struggleHit() {
     const s = this.struggle;
-    if (!s) return;
+    if (!s || s.t < s.ready) return; // presses during "Get ready" are ignored, not punished
     const m = this.markerPos();
     if (Math.abs(m - s.center) <= s.zone / 2) {
       s.hits++;
-      s.flash = 0.25;
       sfx.chime();
-      this.player.shake = 0.1;
-      if (s.hits >= 3) return this.endStruggle(true);
-      s.zone *= 0.72; // tighter
+      sfx.don?.(0.25 + s.hits * 0.15);
+      this.player.shake = 0.08;
+      this.duelFx('hit', ['', 'Got a grip!', 'Hold on!', 'Got it!'][s.hits], '#7cf29a');
+      if (s.hits >= 3) {
+        s.done = 0.6; // let the success register before the bell drops
+        return;
+      }
+      s.zone *= 0.75; // tighter
       s.speed *= 1.3; // faster
-      s.center = 0.2 + Math.random() * 0.6;
+      s.center = 0.18 + Math.random() * 0.64;
     } else {
       s.misses++;
-      s.flash = -0.25;
       sfx.fail?.();
-      if (s.misses >= 2) return this.endStruggle(false);
+      this.duelFx('miss', s.misses >= 2 ? 'It slipped away!' : 'Slipped! One more and it escapes', '#ff6a5a');
+      if (s.misses >= 2) s.lost = 0.6;
     }
   }
 
   endStruggle(won) {
     removeEventListener('keydown', this.struggleKey, true);
     this.struggle = null;
-    this.ui.gameHud(null);
+    this.duelEl.classList.remove('on');
     this.player.enabled = true;
     if (won) {
       this.quest.note('The struggle', 'Held on through the tanuki’s wriggling until it let go of the bell.');
+      sfx.suzu();
+      this.quest.burst(this.tanuki.pos.clone());
+      this.ui.toast('You pried the bell loose! The tanuki scampers off.');
       this.tanuki.catch(this.player.pos);
     } else {
       this.tanuki.escapeFrom(this.player.pos);
@@ -239,19 +258,20 @@ export class TreasureHunt {
   updateStruggle(dt) {
     const s = this.struggle;
     s.t += dt;
-    s.time -= dt;
-    s.flash += s.flash > 0 ? -dt : dt;
-    if (Math.abs(s.flash) < dt) s.flash = 0;
-    if (s.time <= 0) return this.endStruggle(false);
+    if (s.t > s.ready) s.time -= dt;
+    s.fbT -= dt;
+    if (s.done !== undefined && (s.done -= dt) <= 0) return this.endStruggle(true);
+    if (s.lost !== undefined && (s.lost -= dt) <= 0) return this.endStruggle(false);
+    if (s.time <= 0) {
+      this.duelFx('miss', 'Too slow — it slipped away!', '#ff6a5a');
+      return this.endStruggle(false);
+    }
     const m = this.markerPos();
-    const z0 = (s.center - s.zone / 2) * 100;
-    const col = s.flash > 0 ? '#7cf29a' : s.flash < 0 ? '#ff5a5a' : '#ffd24a';
-    this.ui.gameHud(`<div class="gh-title">Hold on to the thief!</div>
-      <div>Press <b>SPACE</b> inside the gold zone · grip <b>${s.hits} / 3</b> · slips <b>${s.misses} / 2</b> · ${Math.ceil(s.time)}s</div>
-      <div style="position:relative;width:420px;max-width:80vw;height:22px;margin:8px auto;background:rgba(255,255,255,0.12);border-radius:6px;overflow:hidden">
-        <div style="position:absolute;left:${z0}%;width:${s.zone * 100}%;top:0;bottom:0;background:${col};opacity:0.55"></div>
-        <div style="position:absolute;left:calc(${m * 100}% - 3px);width:6px;top:-2px;bottom:-2px;background:#fff;box-shadow:0 0 8px #fff"></div>
-      </div>`);
+    const pips = [0, 1, 2].map((i) => `<span class="${i < s.hits ? 'on' : 'off'}">●</span>`).join('') + '&nbsp;&nbsp;' + [0, 1].map((i) => `<span class="${i < s.misses ? 'x' : 'off'}">✕</span>`).join('');
+    const sub = s.t < s.ready ? 'Get ready… press <b>SPACE</b> when the white marker is inside the gold zone' : `Press <b>SPACE</b> in the gold zone · ${Math.ceil(s.time)}s · the zone shrinks with every grip`;
+    this.duelEl.innerHTML = `<div class="dt">${s.t < s.ready ? 'You grabbed the thief!' : 'Hold on!'}</div><div class="ds">${sub}</div>
+      <div class="track"><div class="zone" style="left:${(s.center - s.zone / 2) * 100}%;width:${s.zone * 100}%"></div><div class="marker" style="left:${m * 100}%"></div></div>
+      <div class="pips">${pips}</div><div class="fb" style="opacity:${s.fbT > 0 ? 1 : 0}">${s.fb}</div>`;
   }
 
   // Called by the festival when an activity finishes (the hunt reaches into the festival's games).

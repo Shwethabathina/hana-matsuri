@@ -65,6 +65,10 @@ const S = (fn) => (...args) => {
 };
 
 export const sfx = {
+  rustle: S((t, v = 1) => {
+    noise(t, { type: 'bandpass', freq: 1800, q: 0.8, gain: 0.18 * v, attack: 0.02, decay: 0.35 });
+    noise(t + 0.12, { type: 'bandpass', freq: 2600, q: 0.8, gain: 0.1 * v, attack: 0.02, decay: 0.25 });
+  }),
   step: S((t, v = 0.5) => noise(t, { type: 'lowpass', freq: 520 + Math.random() * 180, gain: 0.07 * v, attack: 0.004, decay: 0.07 })),
   // Small bell cluster; v = 0..1 loudness (used for the tanuki's stolen Kagura bell).
   jingle: S((t, v = 1) => {
