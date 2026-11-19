@@ -193,3 +193,80 @@ export function setAmbience({ day = 0, night = 0, crowd = 0 }) {
   amb.cricket.gain.setTargetAtTime(night * 0.008, t, 0.6);
   amb.crowd.gain.setTargetAtTime(crowd * 0.05, t, 0.6);
 }
+
+// Horror score for the Test of Courage: a detuned low drone with a slow swell, breathy shakuhachi-like
+// noise phrases and sparse dissonant koto plucks. setHorror(level) raises tension (0 calm .. 1 chase).
+let horror = null;
+export function startHorror() {
+  if (!ctx || horror) return;
+  const out = ctx.createGain();
+  out.gain.value = 0;
+  out.connect(master);
+  out.gain.setTargetAtTime(1, ctx.currentTime, 1.5);
+  const drone = ctx.createGain();
+  drone.gain.value = 0.05;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 380;
+  drone.connect(lp);
+  lp.connect(out);
+  const oscs = [55, 55 * 1.007, 82.4 * 0.995, 116.5].map((f, i) => {
+    const o = ctx.createOscillator();
+    o.type = i === 3 ? 'triangle' : 'sawtooth';
+    o.frequency.value = f;
+    const g = ctx.createGain();
+    g.gain.value = i === 3 ? 0.25 : 0.5;
+    o.connect(g);
+    g.connect(drone);
+    o.start();
+    return o;
+  });
+  const swell = ctx.createOscillator();
+  swell.frequency.value = 0.07;
+  const sg = ctx.createGain();
+  sg.gain.value = 0.03;
+  swell.connect(sg);
+  sg.connect(drone.gain);
+  swell.start();
+  horror = { out, drone, lp, oscs, swell, level: 0, nextPluck: ctx.currentTime + 3, nextBreath: ctx.currentTime + 6 };
+  horror.timer = setInterval(horrorTick, 250);
+}
+
+function horrorTick() {
+  if (!horror) return;
+  const t = ctx.currentTime;
+  const L = horror.level;
+  if (t > horror.nextPluck) {
+    // Koto-like pluck from an unsettling scale (in-sen), sometimes a tritone pair.
+    const scale = [220, 233.1, 293.7, 329.6, 349.2, 440, 466.2];
+    const f = scale[Math.floor(Math.random() * scale.length)] * (Math.random() < 0.3 ? 0.5 : 1);
+    tone(t, { type: 'triangle', freq: f, gain: 0.05, decay: 1.6 });
+    if (Math.random() < 0.35) tone(t + 0.02, { type: 'triangle', freq: f * 1.414, gain: 0.03, decay: 1.4 });
+    horror.nextPluck = t + (L > 0.6 ? 0.9 : 2.5) + Math.random() * (L > 0.6 ? 1 : 4);
+  }
+  if (t > horror.nextBreath) {
+    noise(t, { type: 'bandpass', freq: 600 + Math.random() * 500, q: 6, gain: 0.05 + L * 0.05, attack: 0.8, decay: 1.8 });
+    horror.nextBreath = t + 5 + Math.random() * 7;
+  }
+}
+
+export function setHorror(level) {
+  if (!horror) return;
+  horror.level = level;
+  const t = ctx.currentTime;
+  horror.lp.frequency.setTargetAtTime(380 + level * 1400, t, 0.4);
+  horror.drone.gain.setTargetAtTime(0.05 + level * 0.07, t, 0.4);
+  horror.oscs[3].frequency.setTargetAtTime(116.5 * (1 + level * 0.06), t, 0.6); // pitch creeps sharp under stress
+}
+
+export function stopHorror() {
+  if (!horror) return;
+  const h = horror;
+  horror = null;
+  clearInterval(h.timer);
+  h.out.gain.setTargetAtTime(0, ctx.currentTime, 0.8);
+  setTimeout(() => {
+    for (const o of [...h.oscs, h.swell]) o.stop();
+    h.out.disconnect();
+  }, 3000);
+}

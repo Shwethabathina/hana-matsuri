@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { G } from '../state.js';
-import { sfx } from '../audio.js';
+import { sfx, startHorror, setHorror, stopHorror } from '../audio.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { angleDamp, canvasTexture, glowTexture, textSprite } from '../util.js';
 import { makeCharacter, animate } from '../npc.js';
 
@@ -248,12 +249,22 @@ export class CourageChallenge {
     });
   }
 
-  makeSpirit(kind, home, heading, a = 0, b = 0) {
+  makeSpirit(kind, home, heading, a = 0, b = 0, modelKey = 'kasa') {
     const assets = this.ctx.spirits || {};
     const g = new THREE.Group();
     let model = null;
-    if (assets.kasa) {
-      model = assets.kasa.scene.clone();
+    let mixer = null;
+    const src = assets[modelKey] || assets.kasa;
+    if (src) {
+      model = modelKey === 'guardian' ? SkeletonUtils.clone(src.scene) : src.scene.clone();
+      model.visible = true; // the source may be hidden (the Spirit Realm hides its guardian when idle)
+      if (modelKey === 'guardian') {
+        model.scale.setScalar(0.75);
+        mixer = new THREE.AnimationMixer(model);
+        const clip = (n) => src.animations.find((x) => x.name.endsWith('|' + n));
+        model.userData.acts = { idle: clip('Idle') && mixer.clipAction(clip('Idle')), run: clip('Run') && mixer.clipAction(clip('Run')) };
+        model.userData.acts.idle?.play();
+      }
       g.add(model);
     }
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: kind === 'watch' ? '#c79aff' : '#7ac8ff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -275,7 +286,7 @@ export class CourageChallenge {
     g.position.copy(home);
     this.ctx.world.scene.add(g);
     return {
-      kind, g, model, glow, cone, mark, R, fovCos: Math.cos(half),
+      kind, g, model, glow, cone, mark, R, fovCos: Math.cos(half), modelKey, mixer, float: modelKey === 'hannya' || modelKey === 'tengu',
       pos: home.clone(), home: home.clone(), homeHeading: heading, heading, a, b,
       t: a + Math.random() * Math.max(0.001, b - a), dir: 1, pause: 0, look: 0,
       state: 'patrol', sus: 0, route: [], routeT: 0, lostT: 0, stun: 0, waitT: 0, target: home.clone(), senseT: Math.random() * 0.1,
@@ -286,8 +297,8 @@ export class CourageChallenge {
     for (const sp of this.spirits) this.ctx.world.scene.remove(sp.g);
     this.spirits = [];
     // Trial 1 — two light-drawn wanderers patrol the first stretch of the path.
-    for (const [a, b] of [[0.08, 0.19], [0.2, 0.32]]) this.spirits.push(this.makeSpirit('wander', this.curve.getPointAt(a).setY(0), 0, a, b));
-    if (this.diff === 'hard') this.spirits.push(this.makeSpirit('wander', this.curve.getPointAt(0.26).setY(0), 0, 0.24, 0.3));
+    for (const [a, b] of [[0.08, 0.19], [0.2, 0.32]]) this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(a).setY(0), 0, a, b), { trial: 1 }));
+    if (this.diff === 'hard') this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(0.26).setY(0), 0, 0.24, 0.3), { trial: 1 }));
     // Trial 2 — a guardian watcher stares at the second seal; one wanderer passes nearby.
     const seal = this.seals[1];
     let post = null;
@@ -297,13 +308,17 @@ export class CourageChallenge {
       if (this.isFree(q, 0.4) && this.clear(q.x, q.z, seal.pos.x, seal.pos.z)) post = q;
     }
     if (post) {
-      const g = this.makeSpirit('watch', post, Math.atan2(seal.pos.x - post.x, seal.pos.z - post.z));
+      const g = this.makeSpirit('watch', post, Math.atan2(seal.pos.x - post.x, seal.pos.z - post.z), 0, 0, 'hannya');
       g.guard = true;
+      g.trial = 2;
       g.waitMax = 5; // a lured guardian searches the noise for a few seconds before returning
       this.spirits.push(g);
       this.guard = g;
     }
-    this.spirits.push(this.makeSpirit('wander', this.curve.getPointAt(0.4).setY(0), 0, 0.38, 0.6));
+    // Trial 2's stalker: the big imp roams the guardian's stretch of path.
+    this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(0.4).setY(0), 0, 0.38, 0.6, 'guardian'), { trial: 2 }));
+    // Trial 3's sentinel: a tengu mask flies back and forth between the safe lanterns.
+    this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(0.84).setY(0), 0, 0.84, 0.9, 'tengu'), { trial: 3 }));
     // Trial 3 — the Rokurokubi and her seal; safe lanterns on the escape route.
     this.spawnHunter();
     this.buildSafeZones();
@@ -441,6 +456,33 @@ export class CourageChallenge {
       s.g.remove(s.model);
       s.model = null;
     }
+    const geisha = this.ctx.spirits?.geisha;
+    if (geisha) {
+      // The geisha model: vertices above the shoulders rise with uExt, stretching the neck in the vertex shader.
+      const body = geisha.scene.clone();
+      const uni = { uExt: { value: 0 }, uBase: { value: 0 }, uH: { value: 1.7 } };
+      body.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = true;
+        o.material = o.material.clone();
+        o.material.onBeforeCompile = (sh) => {
+          Object.assign(sh.uniforms, uni);
+          sh.vertexShader = 'uniform float uExt; uniform float uBase; uniform float uH;\n' + sh.vertexShader.replace('#include <project_vertex>', `
+            vec4 wp = modelMatrix * vec4(transformed, 1.0);
+            float hh = (wp.y - uBase) / uH;
+            float k = smoothstep(0.80, 0.86, hh);
+            wp.y += uExt * k;
+            wp.x += sin(hh * 9.0) * 0.06 * uExt * k * (1.0 - k) * 4.0;
+            vec4 mvPosition = viewMatrix * wp;
+            gl_Position = projectionMatrix * mvPosition;`);
+        };
+        o.material.customProgramCacheKey = () => 'rokurokubi';
+      });
+      s.g.add(body);
+      s.geisha = { body, uni };
+      s.ext = 0;
+      s.mark.position.y = 2.4;
+    } else {
     const c = makeCharacter({ gender: 'f', yukata: ['#ece8e0', '#cfc7ba'], obi: '#1c1c1c', skin: '#e9e2d8', hair: '#060606', bun: false });
     c.root.traverse((o) => o.isMesh && (o.castShadow = true));
     // A neck that can stretch: a plain mesh on the upper-body bone, and the head bone lifted above it.
@@ -454,6 +496,7 @@ export class CourageChallenge {
     s.ext = 0;
     s.g.add(c.root);
     s.mark.position.y = 2.4;
+    }
     // Her lantern
     const L = this.ctx.spirits?.lantern;
     if (L) {
@@ -570,6 +613,7 @@ export class CourageChallenge {
       this.ctx.canvas?.requestPointerLock?.();
     } catch {}
     sfx.whisper?.();
+    startHorror();
     this.hud();
   }
 
@@ -587,6 +631,17 @@ export class CourageChallenge {
     this.fuel = Math.min(100, this.fuel + 30); // each seal glows with enough light to refill the lantern a little
     this.pebbles += 2;
     this.trial = this.found + 1;
+    // A trial won is a breather: its spirits lose interest and drift home, and fear eases.
+    for (const sp of this.spirits) {
+      if ((sp.trial || 3) > this.found) continue;
+      sp.sus = 0;
+      sp.stun = 4;
+      if (sp.state !== 'patrol') {
+        sp.state = 'return';
+        sp.route = this.path(sp.pos, sp.home);
+      }
+    }
+    this.fear = Math.max(0, this.fear - 25);
     this.ctx.world.fogBoost = this.found * 0.012; // the forest grows thicker with every seal taken
     sfx.suzu();
     setTimeout(() => sfx.chime(), 250);
@@ -679,6 +734,7 @@ export class CourageChallenge {
   }
 
   cleanupExtras() {
+    stopHorror();
     this.reedEl?.classList.remove('on', 'seen');
     this.chipEl?.classList.remove('on');
     this.dangerEl?.classList.remove('on');
@@ -877,6 +933,40 @@ export class CourageChallenge {
   // and one-time hints the first time a mechanic becomes relevant.
   feedback(dt, P) {
     const hunter = this.hunter;
+    // Kodama are alarm spirits: if one sees you (and you are not crouched in the dark or hidden), it
+    // rattles and calls the nearest idle spirit to come and look where you are.
+    for (const k of this.kimo.kodama || []) {
+      k.userData.cool = Math.max(0, (k.userData.cool || 0) - dt);
+      if (k.userData.cool > 0 || this.hidden) continue;
+      const d = Math.hypot(P.pos.x - k.position.x, P.pos.z - k.position.z);
+      const reach = (this.lanternOn ? 4.5 : 2.5) * (1 - 0.4 * P.crouch);
+      if (d > reach || !this.clear(k.position.x, k.position.z, P.pos.x, P.pos.z)) continue;
+      k.userData.cool = 12;
+      k.userData.rattle = 0.6;
+      for (let i = 0; i < 5; i++) setTimeout(() => sfx.ka?.(0.35), i * 70);
+      const near = this.spirits.filter((s) => s.state === 'patrol' && !s.guard && s.kind !== 'hunter').sort((a, b) => a.pos.distanceTo(P.pos) - b.pos.distanceTo(P.pos))[0];
+      if (near && near.pos.distanceTo(P.pos) < 22) {
+        near.state = 'investigate';
+        near.target = P.pos.clone();
+        near.route = this.path(near.pos, near.target);
+        near.waitT = 0;
+        near.sus = Math.max(near.sus, 0.45);
+      }
+      if (!this.hinted.has('kodama')) {
+        this.hinted.add('kodama');
+        this.ctx.ui.toast('A kodama rattled — it is calling the spirits to you! Crouch and dim your lantern near them.');
+      }
+    }
+    for (const k of this.kimo.kodama || []) {
+      if (k.userData.rattle > 0) {
+        k.userData.rattle -= dt;
+        k.rotation.z = Math.sin(performance.now() / 20) * 0.25 * Math.max(0, k.userData.rattle);
+      } else k.rotation.z = 0;
+    }
+    // Music tension follows the danger.
+    const chase = this.spirits.some((s) => s.state === 'chase');
+    const search = this.spirits.some((s) => s.state === 'investigate');
+    setHorror(Math.min(1, (chase ? 0.75 : search ? 0.4 : 0.1) + this.fear / 250));
     const searching = this.spirits.some((s) => s.state === 'investigate' || (s.aggressive && this.hidden && !this.hideSeen));
     this.reedEl.classList.toggle('on', !!this.hidden);
     this.reedEl.classList.toggle('seen', !!this.hidden && this.hideSeen);
@@ -1081,6 +1171,19 @@ export class CourageChallenge {
     // Visuals
     s.g.position.copy(s.pos);
     s.g.rotation.y = s.heading;
+    if (s.geisha) {
+      const want = s.state === 'patrol' ? 0 : s.state === 'investigate' ? 0.45 : 1.1;
+      if (want > 0.9 && s.ext < 0.3 && !s.screamed) {
+        s.screamed = true;
+        sfx.scare();
+      }
+      if (want === 0) s.screamed = false;
+      s.ext += (want - s.ext) * (1 - Math.exp(-3 * dt));
+      s.geisha.uni.uExt.value = s.ext + Math.sin(t * 2.3) * 0.04 * s.ext;
+      s.geisha.uni.uBase.value = s.pos.y;
+      s.geisha.body.position.y = speed > 0 ? Math.abs(Math.sin(t * 6)) * 0.03 : 0;
+      s.geisha.body.rotation.z = speed > 0 ? Math.sin(t * 6) * 0.04 : 0;
+    }
     if (s.char) {
       // Rokurokubi: the neck stretches when she is hunting.
       const want = s.state === 'patrol' ? 0 : s.state === 'investigate' ? 0.5 : 1.15;
@@ -1095,7 +1198,21 @@ export class CourageChallenge {
       s.char.head.rotation.z = Math.sin(t * 1.7) * 0.25 * s.ext;
       animate(s.char, speed > 0 ? 'walk' : 'idle', speed > 0 ? speed * 0.6 : 1, dt, t);
     }
-    if (s.model) {
+    if (s.model && s.float) {
+      // Masks hover and drift; the tengu banks as it flies.
+      s.model.position.y = (s.modelKey === 'tengu' ? 1.9 : 1.2) + Math.sin(t * 1.6 + s.home.x) * 0.15;
+      s.model.rotation.z = s.modelKey === 'tengu' ? Math.sin(t * 2) * 0.15 : 0;
+    } else if (s.mixer) {
+      const A = s.model.userData.acts;
+      const want = speed > 0 ? A.run : A.idle;
+      if (want && want !== s.curAct) {
+        want.reset().fadeIn(0.2).play();
+        s.curAct?.fadeOut(0.2);
+        s.curAct = want;
+      }
+      if (A.run) A.run.timeScale = Math.max(0.5, speed / 2.6);
+      s.mixer.update(dt);
+    } else if (s.model) {
       const hop = speed > 0 ? Math.abs(Math.sin(t * (4 + speed * 1.5) + s.home.x)) : 0;
       s.model.position.y = hop * 0.28;
       s.model.rotation.z = (hop - 0.5) * 0.1;
@@ -1104,7 +1221,7 @@ export class CourageChallenge {
     s.cone.material.color.setHex(col);
     s.cone.material.opacity = 0.12 + Math.min(1, s.sus) * 0.16;
     s.mark.visible = s.state === 'chase' || s.state === 'investigate';
-    s.mark.position.y = s.char ? 2.3 + s.ext : 2.1;
+    s.mark.position.y = s.char || s.geisha ? 2.3 + s.ext : s.float ? 2.6 : s.mixer ? 2.7 : 2.1;
     if (s.mark.visible) s.mark.userData.setText(s.state === 'chase' ? '!' : '?');
 
     // Fear contribution

@@ -15,6 +15,8 @@ const FILES = {
   kodama: ['models/spirits/kodama.glb', 0.55, 0.9],
   hannya: ['models/spirits/spirit2.glb', 1.1, 0.5],
   lantern: ['models/spirits/lantern.glb', 1.4, 0],
+  tengu: ['models/spirits/spirit5.glb', 0.9, 0.5], // red tengu mask (flying sentinel)
+  geisha: ['models/spirits/spirit7.glb', 1.7, 0.2], // the Rokurokubi's body
 };
 
 // Scale to a target height, stand on y = 0, centre on x/z, and drop helper geometry
