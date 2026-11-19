@@ -319,6 +319,7 @@ document.getElementById('journal-toggle').addEventListener('click', () => ui.tog
 const player = new Player(camera, canvas, world.colliders);
 G.player = player;
 player.canCrouch = true;
+player.onStep = (v) => G.mode === 'explore' && sfx.step(v);
 player.place(L.start, -Math.PI / 2);
 
 let nearest = null;

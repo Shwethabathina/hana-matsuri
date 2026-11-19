@@ -72,8 +72,8 @@ export class Player {
       this.running = !crouching && (k.has('ShiftLeft') || k.has('ShiftRight'));
       const speed = crouching ? 1.7 : this.running ? 6.2 : 3.4;
       if (wish.lengthSq() > 0) wish.normalize().multiplyScalar(speed);
-      // Smooth acceleration.
-      this.vel.lerp(wish, 1 - Math.exp(-10 * dt));
+      // Responsive acceleration, quicker stopping (no ice-skating when the keys are released).
+      this.vel.lerp(wish, 1 - Math.exp(-(wish.lengthSq() > 0 ? 13 : 18) * dt));
     } else {
       this.vel.multiplyScalar(Math.exp(-10 * dt));
     }
@@ -95,6 +95,12 @@ export class Player {
 
     const sp = this.vel.length();
     this.bob += sp * dt * 2.2;
+    // Footsteps: one per stride; quieter crouched, louder running (the player hears their own noise).
+    this.stepAcc = (this.stepAcc || 0) + sp * dt;
+    if (sp > 0.6 && this.stepAcc > (this.running ? 1.1 : 0.75)) {
+      this.stepAcc = 0;
+      this.onStep?.(this.crouch > 0.5 ? 0.25 : this.running ? 1 : 0.55);
+    }
     this.shake = Math.max(0, this.shake - dt * 1.6);
   }
 

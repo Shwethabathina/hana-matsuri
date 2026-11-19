@@ -333,7 +333,7 @@ export class Kimodameshi {
     // Stepping onto the haunted path opens the challenge screen automatically (once per approach).
     const ent = this.curve.getPointAt(0.03);
     const dEnt = Math.hypot(G.player.pos.x - ent.x, G.player.pos.z - ent.z);
-    const inRealm = window.__hana?.realm?.active || window.__hana?.hunt?.quest?.state === 8;
+    const inRealm = window.__hana?.realm?.active || window.__hana?.hunt?.quest?.state === 8; // SPIRIT_REALM
     if (dEnt < 3 && !this.introOpen && !inRealm && G.mode === 'explore' && !this.ctx.ui.panelOpen) {
       this.introOpen = true;
       this.start();

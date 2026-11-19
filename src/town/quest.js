@@ -21,8 +21,8 @@ export const S = {
 
 const OBJECTIVES = {
   [S.NOT_STARTED]: 'Find Hanae in the Old Town — through the small torii on the game plaza',
-  [S.FIND_CORD]: 'Examine Hanae’s festival cart in the courtyard',
-  [S.ASK_SHOPKEEPER]: 'Ask Kenta the dango seller about the crumbs',
+  [S.FIND_CORD]: 'Investigate Hanae’s festival cart — what took the bell?',
+  [S.ASK_SHOPKEEPER]: 'Question the townsfolk: where did the thief go?',
   [S.PLAY_DRUMS]: 'Return to the festival and play the taiko drums',
   [S.FIND_TANUKI]: 'Listen for the bell — sneak up on the tanuki and grab it',
   [S.TAKE_BELL]: 'Pick up the Kagura Bell',
@@ -55,7 +55,7 @@ export class HeirloomQuest {
   }
 
   get objective() {
-    return OBJECTIVES[this.state];
+    return this.override || OBJECTIVES[this.state];
   }
 
   get clues() {
@@ -66,8 +66,15 @@ export class HeirloomQuest {
     return this.state === S.RETURN_BELL || this.state === S.RING_BELL;
   }
 
+  // Story entries plus the evidence notebook the player fills during the investigation.
   journal() {
-    return JOURNAL.filter(([st]) => this.state >= st).map(([, title, text]) => ({ title, text }));
+    return [...JOURNAL.filter(([st]) => this.state >= st).map(([, title, text]) => ({ title, text })), ...(this.notes || [])];
+  }
+
+  note(title, text) {
+    this.notes = this.notes || [];
+    if (!this.notes.some((n) => n.title === title)) this.notes.push({ title, text });
+    for (const fn of this.listeners) fn(this.state, this.state);
   }
 
   onChange(fn) {
@@ -85,6 +92,8 @@ export class HeirloomQuest {
   reset() {
     const from = this.state;
     this.state = S.NOT_STARTED;
+    this.override = null;
+    this.notes = [];
     this.syncWorld();
     for (const fn of this.listeners) fn(this.state, from);
   }

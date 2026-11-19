@@ -87,17 +87,44 @@ export class TreasureHunt {
         action: () => this.interact(v),
       });
     }
+    // Investigation 1: three pieces of evidence at the cart, examined separately, then a deduction.
+    this.evidence = new Set();
+    const cart = Q.worldPoint('cart');
+    const EVIDENCE = [
+      ['cord', -0.9, 0, 'Inspect the torn cord', 'The red-and-white bell cord is <b>torn, not cut</b> — frayed and chewed, as if pulled free by small teeth.'],
+      ['crumbs', 0.9, 0, 'Inspect the cart boards', 'Sticky <b>pink-and-white dango crumbs</b> are scattered over the boards, and a skewer has been licked clean.'],
+      ['tracks', 0, -1.3, 'Inspect the tracks in the dust', 'Small <b>four-toed paw prints</b>, too small for a dog, lead away from the cart <b>toward the north path</b>.'],
+    ];
+    for (const [key, dx, dz, label, text] of EVIDENCE) {
+      this.world.interactables.push({
+        id: `evidence-${key}`, pos: cart.clone().add(new THREE.Vector3(dx, 0, dz)), radius: 1.2, priority: true,
+        label: () => (this.evidence.has(key) ? `${label} (noted)` : label),
+        enabled: () => inTown() && Q.state === S.FIND_CORD,
+        action: () => {
+          sfx.chime();
+          this.dialog([{ name: 'Evidence', role: `${this.evidence.size + (this.evidence.has(key) ? 0 : 1)} / 3`, text }], () => {
+            this.evidence.add(key);
+            Q.note({ cord: 'Torn cord', crumbs: 'Dango crumbs', tracks: 'Paw prints' }[key], text.replace(/<[^>]+>/g, ''));
+            if (this.evidence.size === 3) this.deduceThief();
+            else this.ui.toast(`Evidence noted (${this.evidence.size} / 3)`);
+          });
+        },
+      });
+    }
+    // Investigation 3: the den at the end of the north path (only once the right lead is followed).
+    this.denPos = this.town.toWorld(1.7, -12.8);
     this.world.interactables.push({
-      id: 'clue-cart', pos: Q.worldPoint('cart'), radius: 1.8, priority: true,
-      label: 'Examine the festival cart', enabled: () => inTown() && Q.state === S.FIND_CORD,
+      id: 'den', pos: this.denPos, radius: 1.8, priority: true,
+      label: 'Search the hollow under the bushes',
+      enabled: () => inTown() && Q.state === S.ASK_SHOPKEEPER && this.lead === 'north',
       action: () => {
         sfx.chime();
         this.dialog([
-          { name: 'The festival cart', text: 'The bell stand is empty. A <b>red-and-white cord</b> hangs from it, torn — not cut. Someone pulled the bell free with their teeth.' },
-          { name: 'The festival cart', text: 'Pink-and-white <b>dango crumbs</b> on the boards, and small four-toed <b>paw prints</b> in the dust, heading north.' },
+          { name: 'The hollow', text: 'A nest of dry leaves — and <b>six licked-clean dango skewers</b>. The thief lives here.' },
+          { name: 'The hollow', text: 'Pinned under a skewer: a crumpled <b>festival programme</b>. One line is chewed: “<b>Taiko performance — 19:00</b>”. The leaves are flattened as if something left in a hurry.' },
         ], () => {
-          Q.advance(S.FIND_CORD, S.ASK_SHOPKEEPER);
-          this.ui.toast('Journal updated: The cart');
+          Q.note('The den', 'Dango skewers and a chewed festival programme: “Taiko performance — 19:00”.');
+          this.deduceWhen();
         });
       },
     });
@@ -211,9 +238,8 @@ export class TreasureHunt {
       shopkeeper: {
         default: ['Three on a stick, sweet soy glaze. …Busy night, isn’t it?'],
         [S.ASK_SHOPKEEPER]: [
-          'Pink-and-white crumbs? Those are mine. And four-toed prints — that’s our <b>tanuki</b>. It’s been stealing dango all week.',
-          'Clever thing. It hides while the town is quiet and only comes out when the <b>festival drums</b> start — everyone’s looking the other way.',
-          'The taiko stage in the festival has gone silent. Get those drums going and I’d wager our thief comes out to play.',
+          'A small furry thing with a mask on its face? I saw it dash past my stall and up the <b>north path</b>, clutching something that jingled.',
+          'Funny thing — yesterday my dango vanished too. Right when the <b>taiko drums started</b> at the festival. Everyone was looking the other way.',
         ],
         [S.PLAY_DRUMS]: ['The taiko stage is in the festival plaza. Make some noise.'],
         [S.FIND_TANUKI]: ['Hear that jingle? Tanuki watch the path ahead of them. Come at it from behind — and don’t run, they’ve sharp ears.'],
@@ -227,11 +253,13 @@ export class TreasureHunt {
       },
       goro: {
         default: ['Fifty years I’ve carved those shrine gates. Never once heard the bell go missing.'],
+        [S.ASK_SHOPKEEPER]: ['The thief? It went out through the <b>south gate</b>, I’m certain. Big fellow, ran on two legs. Mind you, my eyes aren’t what they were after dark…'],
         [S.FIND_TANUKI]: ['Tanuki are cautious. Stand still, and it’ll forget you. Run, and it’s gone.'],
         [S.COMPLETE]: ['That’s the sound I’ve waited for all evening.'],
       },
       aiko: {
         default: ['Each lantern takes a whole day to paper. We light them all for the procession.'],
+        [S.ASK_SHOPKEEPER]: ['I heard rustling in the <b>west alley</b> behind my workshop. Then a cat yowled. Could have been anything, really.'],
         [S.FIND_TANUKI]: ['Something rustled behind my workshop. The alley to the west, I think.'],
         [S.COMPLETE]: ['Now the lanterns can be carried to the shrine. Thank you.'],
       },
@@ -263,9 +291,75 @@ export class TreasureHunt {
       if (v.def.key === 'organizer') {
         if (Q.advance(S.NOT_STARTED, S.FIND_CORD)) this.ui.toast('Quest started: The Missing Festival Heirloom');
         else if (Q.advance(S.RETURN_BELL, S.RING_BELL)) this.ui.toast('Journal updated: The procession');
-      } else if (v.def.key === 'shopkeeper') {
-        if (Q.advance(S.ASK_SHOPKEEPER, S.PLAY_DRUMS)) this.ui.toast('Journal updated: Kenta’s story');
       }
+      // Investigation 2: collect the witnesses' accounts, then decide which lead is credible.
+      if (Q.state === S.ASK_SHOPKEEPER && !this.lead && ['shopkeeper', 'goro', 'aiko'].includes(v.def.key)) {
+        this.witnesses = this.witnesses || new Set();
+        this.witnesses.add(v.def.key);
+        const said = { shopkeeper: ['Kenta’s account', 'Saw it run up the north path. His dango vanished yesterday when the taiko started.'], goro: ['Goro’s account', 'Says a big two-legged figure left through the south gate. Admits his eyes are poor after dark.'], aiko: ['Aiko’s account', 'Heard rustling and a cat in the west alley.'] }[v.def.key];
+        Q.note(...said);
+        if (this.witnesses.size === 3) this.deduceLead();
+        else this.ui.toast(`Witness heard (${this.witnesses.size} / 3)`);
+      }
+    });
+  }
+
+  // A deduction: the player picks an answer; a wrong one explains why it does not fit, then asks again.
+  deduce(title, question, options, onRight) {
+    const P = this.player;
+    P.enabled = false;
+    P.unlock();
+    this.ui.complete(
+      `<div class="dlg-role">Deduction</div><h2 class="fin">${title}</h2><p>${question}</p><p class="muted">Your journal (J) holds everything you have found.</p>`,
+      options.map(([label, right, why]) => [label, () => {
+        if (right) {
+          sfx.chime();
+          P.enabled = true;
+          onRight();
+        } else {
+          sfx.fail?.();
+          this.dialog([{ name: 'That doesn’t fit', text: why }], () => this.deduce(title, question, options, onRight));
+        }
+      }]),
+    );
+  }
+
+  deduceThief() {
+    this.deduce('What took the bell?', 'You have examined the cord, the boards and the dust around the cart.', [
+      ['A festival-goer pulled it off', false, 'A person would have <b>cut or untied</b> the cord — this one was chewed. And people don’t leave four-toed prints.'],
+      ['A crow carried it away', false, 'A crow can’t carry a heavy bell — and birds don’t leave <b>four-toed paw prints</b> in the dust.'],
+      ['A small animal with a sweet tooth', true, ''],
+    ], () => {
+      this.quest.advance(S.FIND_CORD, S.ASK_SHOPKEEPER);
+      this.quest.note('Deduction: the thief', 'A small animal with teeth, four-toed paws and a taste for dango — a tanuki?');
+      this.ui.toast('Deduction correct — now find out where it went. Ask around.');
+    });
+  }
+
+  deduceLead() {
+    this.deduce('Which lead do you follow?', 'Three townsfolk told three different stories. Only one fits the evidence from the cart.', [
+      ['Goro — the south gate', false, 'Goro saw a <b>big, two-legged</b> figure, and admits his eyes are poor. The thief is small and four-footed — and the prints at the cart lead <b>north</b>.'],
+      ['Aiko — the west alley', false, 'Aiko only <b>heard</b> rustling and a cat. Nothing she describes matches the jingling thief, and the prints don’t go west.'],
+      ['Kenta — the north path', true, ''],
+    ], () => {
+      this.lead = 'north';
+      this.quest.override = 'Follow Kenta’s lead up the north path — look for where the thief hides';
+      this.quest.note('Deduction: the lead', 'Kenta’s account matches the paw prints: the thief went up the north path.');
+      this.refreshHud();
+      this.ui.toast('Kenta’s story matches the paw prints. Search the north path.');
+    });
+  }
+
+  deduceWhen() {
+    this.deduce('When does the thief come out?', 'The den is empty. To catch the thief, you must know when it leaves its hiding place.', [
+      ['At dawn, when the town sleeps', false, 'Nothing points to dawn. Kenta’s dango vanished in the <b>evening</b> — and look at what the programme in the den says.'],
+      ['When someone leaves food out', false, 'Food is what it steals, not what calls it out. Kenta’s dango went missing <b>at a particular moment</b> — when?'],
+      ['When the festival drums play', true, ''],
+    ], () => {
+      this.quest.override = null;
+      this.quest.advance(S.ASK_SHOPKEEPER, S.PLAY_DRUMS);
+      this.quest.note('Deduction: the timing', 'It comes out when the taiko plays and everyone looks the other way. Make the drums play.');
+      this.ui.toast('The drums! Play the taiko at the festival to draw the thief out.');
     });
   }
 
@@ -299,6 +393,9 @@ export class TreasureHunt {
     this.quest.reset();
     this.tanuki.reset();
     this.hinted = false;
+    this.evidence = new Set();
+    this.witnesses = new Set();
+    this.lead = null;
     if (this.area !== 'town') {
       this.enter();
       return;
@@ -375,7 +472,7 @@ export class TreasureHunt {
       case S.FIND_CORD:
         return Q.worldPoint('cart');
       case S.ASK_SHOPKEEPER:
-        return V.shopkeeper.pos;
+        return null; // the player decides whom to question and which lead to follow
       case S.TAKE_BELL:
         return this.bellPos;
       default:
@@ -386,7 +483,7 @@ export class TreasureHunt {
   // People to talk to get a marker; clues and the thief must be found by looking and listening.
   get beaconFor() {
     const st = this.quest.state;
-    return st === S.NOT_STARTED || st === S.ASK_SHOPKEEPER || st === S.RETURN_BELL;
+    return st === S.NOT_STARTED || st === S.RETURN_BELL;
   }
 
   refreshHud() {
