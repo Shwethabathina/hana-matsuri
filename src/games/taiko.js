@@ -1,14 +1,13 @@
 import * as THREE from 'three';
 import { L } from '../layout.js';
-import { G, emit } from '../state.js';
+import { G, emit, tuning } from '../state.js';
 import { audioTime, sfx } from '../audio.js';
 import { canvasTexture, damp, pick, rand, signTexture } from '../util.js';
 
 const T = L.taiko;
 const STAGE_H = 1.05;
 const DRUM = new THREE.Vector3(T.x, STAGE_H + 0.95, T.z);
-const BPM = 120;
-const STEP = 60 / BPM / 2; // eighth notes
+let STEP = 60 / 120 / 2; // eighth notes (set from the difficulty's tempo when a song starts)
 const BARS = [
   'd...d...', 'd...d.d.', 'd.k.d.k.', 'd.d.d...',
   'd..kd..k', 'dd..k.k.', 'd.k.ddk.', 'kkd.kkd.',
@@ -132,10 +131,12 @@ export class Taiko {
     G.taikoActive = true;
     G.taikoHype = 0;
     this.notes = [];
+    this.tune = tuning();
+    STEP = 60 / this.tune.taikoBpm / 2;
     const t0 = audioTime() + 2.2;
     this.t0 = t0;
     let slot = 0;
-    for (const bar of BARS) {
+    for (const bar of BARS.slice(0, this.tune.taikoBars)) { // songs start simple; harder bars come later
       for (const ch of bar) {
         if (ch !== '.') this.notes.push({ t: t0 + slot * STEP, type: ch, judged: false });
         slot++;
@@ -156,7 +157,8 @@ export class Taiko {
       <div class="gh-title">太鼓 Taiko Rhythm</div>
       <canvas id="taiko-lane" width="900" height="120"></canvas>
       <div><b>F / J</b> or <b>left click</b> = <span style="color:#ff5a4a">DON (centre)</span> ·
-      <b>D / K</b> or <b>right click</b> = <span style="color:#4ab0ff">KA (rim)</span> · Esc to leave</div>`);
+      <b>D / K</b> or <b>right click</b> = <span style="color:#4ab0ff">KA (rim)</span> · Esc to leave</div>
+      <div class="gf-dev">Difficulty: <b>${this.tune.label}</b> · ${this.tune.taikoBpm} BPM · pass at ${this.tune.taikoPass}% accuracy${this.tune.anyDrum ? ' · either drum counts' : ''} (change in Settings)</div>`);
     this.lane = document.getElementById('taiko-lane').getContext('2d');
   }
 
@@ -187,7 +189,7 @@ export class Taiko {
     G.drumHit++;
     // Find the closest unjudged note within the timing window.
     let best = null;
-    let bestD = 0.16;
+    let bestD = this.tune.late + 0.03;
     for (const n of this.notes) {
       if (n.judged) continue;
       const d = Math.abs(n.t - now);
@@ -195,13 +197,14 @@ export class Taiko {
         best = n;
         bestD = d;
       }
-      if (n.t > now + 0.2) break;
+      if (n.t > now + this.tune.late + 0.05) break;
     }
     if (!best) return;
     best.judged = true;
-    if (best.type !== type) return this.judge('miss', best);
-    if (bestD < 0.05) this.judge('great', best);
-    else if (bestD < 0.11) this.judge('good', best);
+    const T = this.tune;
+    if (best.type !== type) return this.judge(T.anyDrum && bestD < T.good ? 'good' : 'miss', best); // Easy: wrong drum but on time still counts
+    if (bestD < T.great) this.judge('great', best);
+    else if (bestD < T.good) this.judge('good', best);
     else this.judge('miss', best);
   }
 
@@ -320,7 +323,7 @@ export class Taiko {
       this.nextTick += STEP * 2;
     }
     for (const n of this.notes) {
-      if (!n.judged && now - n.t > 0.13) {
+      if (!n.judged && now - n.t > this.tune.late) {
         n.judged = true;
         this.judge('miss', n);
       }
@@ -332,13 +335,13 @@ export class Taiko {
       this.finished = true;
       const total = this.notes.length;
       const acc = Math.round(((this.stats.great + this.stats.good * 0.5) / total) * 100);
-      const success = acc >= 50;
+      const success = acc >= this.tune.taikoPass;
       this.ctx.finish('taiko', success, `
         <h2>${success ? '🥁 Splendid performance!' : '🥁 Keep practising!'}</h2>
         <p>Score <b>${this.score}</b> · Accuracy <b>${acc}%</b> · Max combo <b>${this.maxCombo}</b></p>
         <p>良 Great ${this.stats.great} · 可 Good ${this.stats.good} · 不可 Miss ${this.stats.miss}</p>
         <p class="muted">Visitors' behaviour trees switched to "Gather at taiko" while you played; they cheer as your combo grows.</p>
-        ${success ? '<p>🎆 Unlocked: <b>Taiko double-ring</b> firework pattern</p>' : '<p class="muted">Reach 50% accuracy to unlock a firework pattern.</p>'}`);
+        ${success ? '<p>🎆 Unlocked: <b>Taiko double-ring</b> firework pattern</p>' : `<p class="muted">Reach ${this.tune.taikoPass}% accuracy (${this.tune.label}) to win. Watch the notes reach the circle and hit just as they touch it.</p>`}`);
     }
   }
 }

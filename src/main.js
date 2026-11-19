@@ -20,8 +20,8 @@ import { S as QS } from './town/quest.js';
 import { buildBooth } from './booth.js';
 import { buildStallGoods } from './stallgoods.js';
 import { createUI } from './ui.js';
-import { G } from './state.js';
-import { initAudio, setAmbience, sfx } from './audio.js';
+import { G, TUNING } from './state.js';
+import { initAudio, setAmbience, sfx, audioTime } from './audio.js';
 import { L, STALLS, stallFront, KIMO_PATH, WORLD_BOUNDS } from './layout.js';
 import { damp, lerp, pick } from './util.js';
 
@@ -303,6 +303,22 @@ document.getElementById('btn-pmode').addEventListener('click', togglePerceptionM
 document.getElementById('btn-tp').addEventListener('click', () => hunt?.area === 'festival' && hunt.enter());
 document.getElementById('btn-tp2').addEventListener('click', () => hunt?.area === 'town' && hunt.exit());
 document.getElementById('gear').addEventListener('click', toggleDev);
+// Mini-game difficulty (Easy by default; remembered on this device).
+try {
+  const saved = localStorage.getItem('hm-difficulty');
+  if (saved && TUNING[saved]) G.difficulty = saved;
+} catch {}
+function cycleDifficulty() {
+  const order = ['easy', 'normal', 'hard'];
+  G.difficulty = order[(order.indexOf(G.difficulty) + 1) % 3];
+  try {
+    localStorage.setItem('hm-difficulty', G.difficulty);
+  } catch {}
+  document.getElementById('btn-diff').textContent = `Mini-games: ${TUNING[G.difficulty].label}`;
+  ui.toast(`Mini-game difficulty: ${TUNING[G.difficulty].label}`);
+}
+document.getElementById('btn-diff').addEventListener('click', cycleDifficulty);
+document.getElementById('btn-diff').textContent = `Mini-games: ${TUNING[G.difficulty].label}`;
 document.getElementById('btn-emblems').addEventListener('click', () => {
   for (const e of EMBLEMS) markDone(e.key);
 });
@@ -589,7 +605,7 @@ async function boot() {
   ui.objectives();
   ui.emblems(EMBLEMS);
   // Handle for debugging / automated screenshots from the console.
-  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto, hunt, finale, realm, markDone, renderer, measure, toggleCulling, get areaCulling() { return areaCulling; } };
+  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto, hunt, finale, realm, markDone, renderer, measure, audioTime, toggleCulling, get areaCulling() { return areaCulling; } };
   // Warm up shaders so the first frame after entering doesn't hitch.
   renderer.compile(scene, camera);
   // Tree models stream in after start-up; compile their shaders before they first appear.
@@ -644,7 +660,9 @@ async function boot() {
         page.querySelector('#set-quality').textContent = quality === 'high' ? 'High' : 'Low';
         page.querySelector('#set-perf').textContent = perfOn ? 'On' : 'Off';
         page.querySelector('#set-auto').textContent = autoTime ? 'On' : 'Off';
+        page.querySelector('#set-diff').textContent = TUNING[G.difficulty].label;
       };
+      page.querySelector('#set-diff').onclick = () => (cycleDifficulty(), sync());
       page.querySelector('#set-quality').onclick = () => (toggleQuality(), sync());
       page.querySelector('#set-perf').onclick = () => (togglePerf(), sync());
       page.querySelector('#set-auto').onclick = () => (setAuto(!autoTime), sync());

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { buildBooth } from '../booth.js';
 import { L } from '../layout.js';
-import { G, emit } from '../state.js';
+import { G, emit, tuning } from '../state.js';
 import { sfx } from '../audio.js';
 import { sphereAABB } from '../collision.js';
 import { canvasTexture, rand } from '../util.js';
@@ -116,7 +116,15 @@ export class Shateki {
 
   enter() {
     this.active = true;
-    this.ammo = 8;
+    this.tune = tuning();
+    this.ammo = this.tune.corks;
+    // Aim dot where the cork will land on the shelf plane (Easy / Normal).
+    if (!this.aimDot) {
+      this.aimDot = new THREE.Mesh(new THREE.RingGeometry(0.018, 0.03, 20), new THREE.MeshBasicMaterial({ color: 0xff3a3a, depthTest: false, transparent: true, opacity: 0.9 }));
+      this.aimDot.renderOrder = 30;
+      this.ctx.world.scene.add(this.aimDot);
+    }
+    this.aimDot.visible = this.tune.aimDot;
     this.won = [];
     this.endT = null;
     this.stock();
@@ -126,7 +134,8 @@ export class Shateki {
     this.ctx.ui.gameHud(`
       <div class="gh-title">射的 Shooting Gallery</div>
       <div>Click to fire a cork · corks drop with gravity — aim a little high · knock prizes <b>off</b> the shelf</div>
-      <div>Corks: <b id="sh-ammo"></b> · Prizes: <b id="sh-won">0</b> · Esc to leave</div>`);
+      <div>Corks: <b id="sh-ammo"></b> · Prizes: <b id="sh-won">0</b> · Esc to leave</div>
+      <div class="gf-dev">Difficulty: <b>${this.tune.label}</b> · ${this.tune.corks} corks · knock off at least one prize to win${this.tune.aimDot ? ' · the red ring shows where your cork will hit' : ''} (change in Settings)</div>`);
     this.updateHud();
     document.body.classList.add('aiming');
   }
@@ -134,6 +143,7 @@ export class Shateki {
   exit() {
     this.active = false;
     this.gun.visible = false;
+    if (this.aimDot) this.aimDot.visible = false;
     document.body.classList.remove('aiming');
   }
 
@@ -146,6 +156,15 @@ export class Shateki {
 
   pointerMove(ndc) {
     this.ndc.copy(ndc);
+    if (this.aimDot?.visible) {
+      this.raycaster.setFromCamera(this.ndc, this.ctx.camera);
+      const ray = this.raycaster.ray;
+      const tHit = (SHELF_Z - 0.1 - ray.origin.z) / ray.direction.z;
+      if (tHit > 0) {
+        this.aimDot.position.copy(ray.at(tHit, new THREE.Vector3()));
+        this.aimDot.lookAt(this.ctx.camera.position);
+      }
+    }
   }
 
   pointerDown(e) {
@@ -162,9 +181,9 @@ export class Shateki {
     const flight = aim.distanceTo(muzzle) / CORK_SPEED;
     // Launch velocity: straight line + 75% gravity compensation, plus slight spread.
     const v = aim.clone().sub(muzzle).divideScalar(flight);
-    v.y += 0.5 * GRAV * flight * 0.75;
-    v.x += rand(-0.12, 0.12);
-    v.y += rand(-0.12, 0.12);
+    v.y += 0.5 * GRAV * flight * this.tune.dropComp; // how much the gun compensates for the cork's drop
+    v.x += rand(-this.tune.spread, this.tune.spread);
+    v.y += rand(-this.tune.spread, this.tune.spread);
     const mesh = new THREE.Mesh(this.corkGeo, this.corkMat);
     mesh.position.copy(muzzle);
     this.ctx.world.scene.add(mesh);
@@ -185,7 +204,7 @@ export class Shateki {
     const push = (speed * 0.06) / pr.def.mass;
     const lever = (c.py - pr.mesh.position.y) / pr.def.h; // 0 = base, 1 = top
     const torque = push * (0.3 + lever);
-    const stability = (pr.def.d / pr.def.h) * 0.9;
+    const stability = (pr.def.d / pr.def.h) * 0.9 * this.tune.stability;
     sfx.thock();
     if (torque > stability) {
       pr.state = 'fall';
@@ -217,7 +236,7 @@ export class Shateki {
           for (const pr of this.prizes) {
             if (pr.state !== 'rest') continue;
             const bx = this.prizeBox(pr);
-            const c = sphereAABB(ck.p, CORK_R, bx.min, bx.max);
+            const c = sphereAABB(ck.p, CORK_R * this.tune.hitR, bx.min, bx.max); // hit tolerance by difficulty
             if (c) {
               this.hitPrize(pr, ck, c);
               ck.hit = true;

@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { buildBooth } from '../booth.js';
 import { L } from '../layout.js';
-import { G, emit } from '../state.js';
+import { G, emit, tuning } from '../state.js';
 import { sfx } from '../audio.js';
 import { angleDamp, canvasTexture, clamp, damp, pick, rand } from '../util.js';
 
@@ -371,6 +371,8 @@ export class Goldfish {
   // ------------------------------------------------------------ game flow
   enter() {
     this.active = true;
+    this.tune = tuning();
+    this.debugGroup.visible = true; // catch rings (green = would be scooped now)
     this.paperHP = 1;
     this.caught = 0;
     this.score = 0;
@@ -395,6 +397,7 @@ export class Goldfish {
       <div>Move the mouse to aim · <b>hold</b> to dip the poi · <b>release</b> under a shallow fish to scoop</div>
       <div>🌊 Ripples push the fish: <b>tap</b> the water or press <b>Space</b> to make a wave and herd them — but choppy water soaks the paper faster.</div>
       <div class="bar"><span id="poi-hp"></span></div>
+      <div class="gf-dev">Difficulty: <b>${this.tune.label}</b>${this.tune.ring ? ' · a <b style="color:#5aff8a">green ring</b> under a fish means: lift now!' : ''} (change in Settings)</div>
       <div>Fish: <b id="gf-count">0</b> · Score: <b id="gf-score">0</b> · Esc to leave</div>
       <div class="gf-dev"><span id="gf-stats"></span><br>
       <b>V</b> show colliders · <b>P</b> stress test: +20 fish · <b>O</b> water resolution · <b>R</b> reset stress</div>`);
@@ -414,10 +417,11 @@ export class Goldfish {
     this.active = false;
     this.poi.visible = false;
     this.debugGroup.visible = false;
+    this.showAll = false;
   }
 
   keyDown(e) {
-    if (e.code === 'KeyV') this.debugGroup.visible = !this.debugGroup.visible;
+    if (e.code === 'KeyV') this.showAll = !this.showAll;
     if (e.code === 'Space' && !this.submerged) {
       // A wave from the poi's position: fish are pushed away from it and can be herded.
       this.water.disturb(this.poiPos.x - TUB.x, this.poiPos.z - TUB.z, 0.16, 0.05);
@@ -460,7 +464,8 @@ export class Goldfish {
   // paper's depth are scooped when it is lifted.
   catchable(f) {
     const d = Math.hypot(TUB.x + f.x - this.poiPos.x, TUB.z + f.z - this.poiPos.z);
-    return f.state === 'swim' && d < POI_R + 0.02 * f.type.size && f.depth < CATCH_DEPTH;
+    const T = this.tune || tuning();
+    return f.state === 'swim' && d < POI_R + T.catchR + 0.02 * f.type.size && f.depth < T.catchDepth;
   }
 
   pointerUp() {
@@ -471,7 +476,7 @@ export class Goldfish {
     if (this.subT < 0.12 || this.torn) return;
     const caughtNow = this.fish.filter((f) => this.catchable(f)).slice(0, 2);
     for (const f of caughtNow) {
-      this.paperHP -= f.type.weight * (1 + this.poiSpeed * 2);
+      this.paperHP -= f.type.weight * this.tune.weight * (1 + this.poiSpeed * 2);
       if (this.paperHP <= 0) {
         this.tear();
         f.vx = -f.vx * 3;
@@ -568,7 +573,7 @@ export class Goldfish {
         const d = Math.hypot(dx, dz);
         if (d < 0.42 && d > 1e-4) {
           flee = Math.max(flee, (0.42 - d) / 0.42);
-          const k = (2 + this.poiSpeed * 6) * flee;
+          const k = (2 + this.poiSpeed * 6) * flee * (this.active ? this.tune.flee : 1);
           fx += (dx / d) * k;
           fz += (dz / d) * k;
         }
@@ -576,7 +581,7 @@ export class Goldfish {
       f.vx += fx * dt;
       f.vz += fz * dt;
       const sp = Math.hypot(f.vx, f.vz);
-      const maxS = 0.3 + flee * 0.7;
+      const maxS = (0.3 + flee * 0.7) * (this.active ? this.tune.fishSpeed : 1);
       const minS = 0.08;
       const s = Math.min(maxS, Math.max(minS, sp));
       if (sp > 1e-5) {
@@ -588,8 +593,10 @@ export class Goldfish {
       f.x = clamp(f.x + f.vx * dt, -HX + 0.05, HX - 0.05);
       f.z = clamp(f.z + f.vz * dt, -HZ + 0.05, HZ - 0.05);
       // Depth: drift between surface and bottom; frightened fish dive.
-      const targetDepth = flee > 0.1 ? 0.21 : 0.12 + Math.sin(t * 0.35 + f.depthPhase) * 0.08;
-      f.depth = damp(f.depth, targetDepth, flee > 0.1 ? 4 : 0.8, dt);
+      // Startled fish dive; on easier settings they dive slower and less deep, so a quick dip-and-lift can still catch them.
+      const fl = this.active ? (this.tune || tuning()).flee : 1;
+      const targetDepth = flee > 0.1 ? 0.13 + 0.08 * fl : 0.12 + Math.sin(t * 0.35 + f.depthPhase) * 0.08;
+      f.depth = damp(f.depth, targetDepth, flee > 0.1 ? 4 * fl * fl : 0.8, dt);
       // Shallow swimmers leave a wake on the height field.
       f.wakeT -= dt;
       if (f.depth < 0.09 && f.wakeT <= 0) {
@@ -648,7 +655,8 @@ export class Goldfish {
       }
       f.mixer?.update(dt);
       if (this.debugGroup.visible) {
-        f.ring.visible = f.state === 'swim';
+        // Catch feedback: a green ring marks fish you would scoop right now (V shows every collider).
+        f.ring.visible = f.state === 'swim' && (this.showAll || (this.active && this.tune.ring && this.catchable(f)));
         f.ring.position.copy(o.position);
         f.ring.material.color.set(this.active && this.catchable(f) ? 0x5aff8a : f.depth < CATCH_DEPTH ? 0xffffff : 0xff5a5a);
       }
@@ -666,8 +674,8 @@ export class Goldfish {
     // Poi follows the mouse; moving it fast while submerged weakens the paper (water drag)
     // and drags a wake through the height field.
     this.lastPoi.copy(this.poiPos);
-    this.poiPos.x = damp(this.poiPos.x, this.target.x, 14, dt);
-    this.poiPos.z = damp(this.poiPos.z, this.target.z, 14, dt);
+    this.poiPos.x = damp(this.poiPos.x, this.target.x, 18, dt); // snappier, smoother scoop following the mouse
+    this.poiPos.z = damp(this.poiPos.z, this.target.z, 18, dt);
     this.poiSpeed = this.lastPoi.distanceTo(this.poiPos) / Math.max(dt, 1e-3);
     const y = this.submerged ? WATER_Y - 0.07 : WATER_Y + 0.12;
     this.poiPos.y = damp(this.poiPos.y, y, 16, dt);
@@ -680,7 +688,7 @@ export class Goldfish {
       // Drag from moving the poi, plus turbulence: choppy water (fast vertical motion) soaks the paper faster.
       const wp = this.water.sample(this.poiPos.x - TUB.x, this.poiPos.z - TUB.z, this._wp || (this._wp = {}));
       this.turbulence = damp(this.turbulence || 0, Math.abs(wp.v), 8, dt);
-      this.paperHP -= dt * (0.035 + this.poiSpeed * 0.28 + this.turbulence * TURBULENCE_WEAR);
+      this.paperHP -= dt * (0.035 + this.poiSpeed * 0.28 + this.turbulence * TURBULENCE_WEAR) * this.tune.wear;
       this.paperMat.opacity = 0.35 + 0.5 * this.paperHP;
       this.paperMat.color.setScalar(0.75 + 0.25 * this.paperHP);
       if (this.paperHP <= 0) this.tear();
