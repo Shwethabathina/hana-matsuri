@@ -154,7 +154,9 @@ class Dog {
     this.d.head.rotation.x = this.sniff * 0.6 - s * 0.25 + Math.sin(t * 1.3 + this.phase) * 0.05;
     this.d.head.rotation.y = Math.sin(t * 0.8 + this.phase) * 0.35 * (1 - k);
     this.d.tail.rotation.y = Math.sin(t * (speed > 0.1 ? 14 : 7)) * (0.35 + 0.2 * k);
-    this.d.root.position.set(this.pos.x, heightAt(this.pos.x, this.pos.z), this.pos.z);
+    // Stand on the same ground level as the owner (the terrace height map alone made dogs float at its edge).
+    const ownerY = o.c?.root ? o.c.root.getWorldPosition(this._ow || (this._ow = new THREE.Vector3())).y : heightAt(this.pos.x, this.pos.z);
+    this.d.root.position.set(this.pos.x, Math.min(ownerY, heightAt(this.pos.x, this.pos.z)) , this.pos.z);
     this.d.root.rotation.y = this.heading;
 
     // Leash from the owner's right hand to the collar, sagging more when slack.

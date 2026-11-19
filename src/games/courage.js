@@ -297,8 +297,13 @@ export class CourageChallenge {
     for (const sp of this.spirits) this.ctx.world.scene.remove(sp.g);
     this.spirits = [];
     // Trial 1 — two light-drawn wanderers patrol the first stretch of the path.
-    for (const [a, b] of [[0.08, 0.19], [0.2, 0.32]]) this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(a).setY(0), 0, a, b), { trial: 1 }));
-    if (this.diff === 'hard') this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(0.26).setY(0), 0, 0.24, 0.3), { trial: 1 }));
+    // Fewer, purposeful spirits: Trial 1 has one light-drawn wanderer on Easy, two otherwise.
+    const t1 = this.diff === 'easy' ? [[0.12, 0.3]] : [[0.08, 0.19], [0.2, 0.32]];
+    for (const [a, b] of t1) this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(a).setY(0), 0, a, b), { trial: 1 }));
+    // Kodama: keep four as alarms at choke points (one per trial stretch and the entrance), hide the rest.
+    const kd = this.kimo.kodama || [];
+    const keep = new Set([1, 4, 7, 10]);
+    kd.forEach((k, i) => (k.visible = keep.has(i)));
     // Trial 2 — a guardian watcher stares at the second seal; one wanderer passes nearby.
     const seal = this.seals[1];
     let post = null;
@@ -323,6 +328,7 @@ export class CourageChallenge {
     this.spawnHunter();
     this.buildSafeZones();
     this.buildHides();
+    this.buildLevel();
   }
 
   // Stone lanterns whose light the Rokurokubi cannot enter.
@@ -422,6 +428,160 @@ export class CourageChallenge {
     P.vel.set(0, 0, 0);
     sfx.rustle(1);
     if (this.hideSeen) sfx.whisper?.();
+  }
+
+  // ---------------------------------------------------------------- level dressing (route, landmarks, atmosphere)
+  // Readable route: dim guide lanterns along the main path, a red torii at the start of each trial,
+  // stepping-stone branches to the seal shrines (small ruined hokora), drifting hitodama for mood.
+  buildLevel() {
+    if (this.level) this.ctx.world.scene.remove(this.level);
+    const L = new THREE.Group();
+    this.level = L;
+    const stone = new THREE.MeshStandardMaterial({ color: '#77746e', roughness: 1 });
+    const darkWood = new THREE.MeshStandardMaterial({ color: '#3a2a20', roughness: 0.9 });
+    const red = new THREE.MeshStandardMaterial({ color: '#8f1f1a', roughness: 0.7, emissive: '#2a0604', emissiveIntensity: 1 });
+    const glowSprite = (color, scale, opacity = 0.8) => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false }));
+      sp.scale.setScalar(scale);
+      return sp;
+    };
+    const sideOf = (t, side) => {
+      const p = this.curve.getPointAt(t);
+      const tan = this.curve.getTangentAt(t);
+      return new THREE.Vector3(p.x - tan.z * side, 0, p.z + tan.x * side);
+    };
+    // Guide lanterns every ~7 m, alternating sides — the line of pale lights IS the route.
+    const len = this.curve.getLength();
+    const n = Math.floor(len / 7);
+    this.guides = [];
+    for (let i = 1; i < n; i++) {
+      const t = i / n;
+      let q = null;
+      for (const sd of [1.8, -1.8, 2.4, -2.4]) {
+        const c = sideOf(t, (i % 2 ? 1 : -1) * Math.abs(sd) * Math.sign(sd));
+        if (!this.ctx.world.colliders.blocked(c.x, c.z, 0.25)) {
+          q = c;
+          break;
+        }
+      }
+      if (!q) continue;
+      const g = new THREE.Group();
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.8, 6), stone);
+      post.position.y = 0.4;
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.2, 0.22), stone);
+      box.position.y = 0.9;
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.14, 4).rotateY(Math.PI / 4), stone);
+      cap.position.y = 1.07;
+      const flame = glowSprite('#9fc8ff', 0.55, 0.7);
+      flame.position.y = 0.9;
+      g.add(post, box, cap, flame);
+      g.position.copy(q);
+      L.add(g);
+      this.guides.push({ flame, t });
+    }
+    // Trial gates: a red torii spanning the path where each trial begins, with a kanji plaque.
+    const gate = (t, label) => {
+      const p = this.curve.getPointAt(t);
+      const tan = this.curve.getTangentAt(t);
+      const g = new THREE.Group();
+      for (const s of [-1.5, 1.5]) {
+        const pil = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 2.7, 10), red);
+        pil.position.set(s, 1.35, 0);
+        g.add(pil);
+      }
+      const kasagi = new THREE.Mesh(new THREE.BoxGeometry(4.0, 0.18, 0.3), red);
+      kasagi.position.y = 2.75;
+      const nuki = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.12, 0.18), red);
+      nuki.position.y = 2.3;
+      const plaque = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.55), new THREE.MeshBasicMaterial({ map: canvasTexture(64, 84, (c, w, h) => {
+        c.fillStyle = '#1a120c';
+        c.fillRect(0, 0, w, h);
+        c.fillStyle = '#e8c27a';
+        c.font = 'bold 44px "Yu Mincho", serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText(label, w / 2, h / 2);
+      }), side: THREE.DoubleSide }));
+      plaque.position.y = 2.52;
+      plaque.position.z = 0.1;
+      g.add(kasagi, nuki, plaque);
+      const lamp = glowSprite('#ff8a5a', 1.3, 0.55);
+      lamp.position.y = 2.3;
+      g.add(lamp);
+      g.position.set(p.x, 0, p.z);
+      g.rotation.y = Math.atan2(tan.x, tan.z);
+      L.add(g);
+    };
+    gate(0.035, '一');
+    gate(0.37, '二');
+    gate(0.63, '三');
+    // Seal shrines: a small ruined hokora at seals 1 and 2, reached by stepping stones from the path.
+    for (const seal of this.seals.slice(0, 2)) {
+      const sh = new THREE.Group();
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 0.7), stone);
+      base.position.y = 0.17;
+      const hut = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 0.45), darkWood);
+      hut.position.y = 0.58;
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.3, 4).rotateY(Math.PI / 4), darkWood);
+      roof.position.y = 0.95;
+      roof.rotation.z = 0.12; // weathered, slightly askew
+      const broken = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.7, 6), stone);
+      broken.position.set(0.7, 0.35, 0.3);
+      broken.rotation.z = 0.5;
+      sh.add(base, hut, roof, broken);
+      sh.position.set(seal.pos.x + 0.9, 0, seal.pos.z + 0.6);
+      L.add(sh);
+      const near = this.curve.getPointAt(this.kimo.nearestT(seal.pos).t);
+      const d = Math.hypot(seal.pos.x - near.x, seal.pos.z - near.z);
+      for (let k = 1; k < d / 0.75; k++) {
+        const u = k / (d / 0.75);
+        const st = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 0.06, 7), stone);
+        st.position.set(near.x + (seal.pos.x - near.x) * u, 0.03, near.z + (seal.pos.z - near.z) * u);
+        st.rotation.y = Math.random() * 3;
+        L.add(st);
+      }
+    }
+    // Hitodama: a few pale ghost-lights drifting near the path, always a little ahead of the player.
+    this.wisps = [];
+    for (let i = 0; i < 5; i++) {
+      const w = glowSprite(i % 2 ? '#a8d8ff' : '#c8b8ff', 0.5, 0.6);
+      L.add(w);
+      this.wisps.push({ w, phase: Math.random() * 6, t: Math.random() });
+    }
+    // Hiding spots read as cover: faint firefly glints over each reed patch.
+    for (const h of this.hides || []) {
+      const ff = glowSprite('#c8ff8a', 0.25, 0.7);
+      ff.position.copy(h.pos).setY(1.7);
+      L.add(ff);
+      h.fly = ff;
+    }
+    this.ctx.world.scene.add(L);
+  }
+
+  updateLevel(dt, t, P) {
+    for (const g of this.guides || []) {
+      g.flame.material.opacity = 0.45 + Math.sin(t * 5 + g.t * 40) * 0.12 + (Math.random() < 0.01 ? -0.3 : 0);
+    }
+    const here = this.kimo.nearestT(P.pos).t;
+    for (const w of this.wisps || []) {
+      w.t = (w.t + dt * 0.004) % 1;
+      const tt = Math.min(0.99, here + 0.05 + ((w.t * 0.25 + w.phase * 0.01) % 0.2));
+      const p = this.curve.getPointAt(tt);
+      const tan = this.curve.getTangentAt(tt);
+      const side = Math.sin(t * 0.3 + w.phase) * 6;
+      w.w.position.set(p.x - tan.z * side, 1.3 + Math.sin(t * 0.9 + w.phase) * 0.5, p.z + tan.x * side);
+      w.w.material.opacity = 0.35 + Math.sin(t * 3 + w.phase) * 0.25;
+    }
+    for (const h of this.hides || []) {
+      if (!h.fly) continue;
+      const d = h.pos.distanceTo(P.pos);
+      h.fly.visible = d < 14 && this.hidden !== h;
+      h.fly.position.set(h.pos.x + Math.sin(t * 1.3 + h.pos.x) * 0.4, 1.4 + Math.sin(t * 2 + h.pos.z) * 0.3, h.pos.z + Math.cos(t * 1.1 + h.pos.x) * 0.4);
+      h.fly.material.opacity = 0.4 + Math.sin(t * 7 + h.pos.x) * 0.3;
+    }
+    // Cold, blue moonlit fog: the forest reads as cursed, not just dark.
+    const W = this.ctx.world;
+    W.scene.fog.color.lerp(new THREE.Color('#16203a'), 0.7);
   }
 
   inSafe(p) {
@@ -597,7 +757,7 @@ export class CourageChallenge {
     this.props = [];
     this.hunter = null;
     if (this.hunterLight) this.hunterLight.pos.set(0, -50, 0);
-    this.ctx.world.fogBoost = 0;
+    this.ctx.world.fogBoost = 0.008;
     this.placeSeals();
     this.spawnSpirits();
     this.exitBeacon.visible = false;
@@ -642,7 +802,7 @@ export class CourageChallenge {
       }
     }
     this.fear = Math.max(0, this.fear - 25);
-    this.ctx.world.fogBoost = this.found * 0.012; // the forest grows thicker with every seal taken
+    this.ctx.world.fogBoost = 0.008 + this.found * 0.01; // the forest grows thicker with every seal taken
     sfx.suzu();
     setTimeout(() => sfx.chime(), 250);
     if (this.found < 3) {
@@ -735,6 +895,11 @@ export class CourageChallenge {
 
   cleanupExtras() {
     stopHorror();
+    if (this.level) {
+      this.ctx.world.scene.remove(this.level);
+      this.level = null;
+    }
+    for (const k of this.kimo.kodama || []) k.visible = true;
     this.reedEl?.classList.remove('on', 'seen');
     this.chipEl?.classList.remove('on');
     this.dangerEl?.classList.remove('on');
@@ -922,6 +1087,7 @@ export class CourageChallenge {
       if (Math.hypot(P.pos.x - this.exit.x, P.pos.z - this.exit.z) < 2.6) return this.end(true);
     }
     this.feedback(dt, P);
+    this.updateLevel(dt, t, P);
     this.hudT = (this.hudT || 0) - dt;
     if (this.hudT <= 0) {
       this.hudT = 0.2;
@@ -937,7 +1103,7 @@ export class CourageChallenge {
     // rattles and calls the nearest idle spirit to come and look where you are.
     for (const k of this.kimo.kodama || []) {
       k.userData.cool = Math.max(0, (k.userData.cool || 0) - dt);
-      if (k.userData.cool > 0 || this.hidden) continue;
+      if (!k.visible || k.userData.cool > 0 || this.hidden) continue;
       const d = Math.hypot(P.pos.x - k.position.x, P.pos.z - k.position.z);
       const reach = (this.lanternOn ? 4.5 : 2.5) * (1 - 0.4 * P.crouch);
       if (d > reach || !this.clear(k.position.x, k.position.z, P.pos.x, P.pos.z)) continue;
@@ -1219,7 +1385,7 @@ export class CourageChallenge {
     }
     const col = s.state === 'chase' ? 0xff4a4a : s.state === 'investigate' || s.sus > 0.2 ? 0xffb05a : s.kind === 'watch' ? 0xb08aff : 0x6ab8ff;
     s.cone.material.color.setHex(col);
-    s.cone.material.opacity = 0.12 + Math.min(1, s.sus) * 0.16;
+    s.cone.material.opacity = 0.08 + Math.min(1, s.sus) * 0.16;
     s.mark.visible = s.state === 'chase' || s.state === 'investigate';
     s.mark.position.y = s.char || s.geisha ? 2.3 + s.ext : s.float ? 2.6 : s.mixer ? 2.7 : 2.1;
     if (s.mark.visible) s.mark.userData.setText(s.state === 'chase' ? '!' : '?');
