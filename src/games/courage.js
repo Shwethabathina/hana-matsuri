@@ -14,9 +14,9 @@ import { makeCharacter, animate } from '../npc.js';
 //   * a fear meter rises when spotted / chased / caught and recovers when safe (100% = fail);
 //   * collect all three, then escape to the shrine-side exit before the timer runs out.
 const DIFF = {
-  easy: { label: 'Easy', time: 240, detect: 0.6, chase: 2.2, range: 6, wander: 4, watch: 2, giveUp: 2, hint: 26, mult: 0.8, gate: 80, fuel: 0.6 },
-  normal: { label: 'Normal', time: 180, detect: 1, chase: 2.6, range: 7, wander: 5, watch: 3, giveUp: 3, hint: 14, mult: 1, gate: 60, fuel: 0.9 },
-  hard: { label: 'Hard', time: 130, detect: 1.45, chase: 3.0, range: 8, wander: 6, watch: 3, giveUp: 4, hint: 7, mult: 1.3, gate: 42, fuel: 1.2 },
+  easy: { label: 'Easy', time: 240, detect: 0.6, chase: 2.2, range: 6, wander: 4, watch: 2, giveUp: 2, hint: 26, mult: 0.8, gate: 75, fuel: 0.6 },
+  normal: { label: 'Normal', time: 180, detect: 1, chase: 2.6, range: 7, wander: 5, watch: 3, giveUp: 3, hint: 14, mult: 1, gate: 55, fuel: 0.9 },
+  hard: { label: 'Hard', time: 130, detect: 1.45, chase: 3.0, range: 8, wander: 6, watch: 3, giveUp: 4, hint: 7, mult: 1.3, gate: 40, fuel: 1.2 },
 };
 const CELL = 0.5;
 const RATINGS = [
@@ -75,9 +75,9 @@ export class CourageChallenge {
       this.seals.push(seal);
       ctx.world.addInteractable({
         id: 'courage-seal', pos: seal.pos, radius: 1.7, priority: true,
-        label: 'Take the mystical seal',
+        label: () => (this.ritual ? 'Performing the ritual…' : this.seals.indexOf(seal) === 0 ? 'Take the mystical seal' : 'Begin the sealing ritual'),
         enabled: () => this.running && !seal.taken && seal.g.visible && seal.g.scale.x > 0.5 && this.clear(G.player.pos.x, G.player.pos.z, seal.pos.x, seal.pos.z),
-        action: () => this.collect(seal),
+        action: () => (this.seals.indexOf(seal) === 0 ? this.collect(seal) : this.startRitual(seal, this.seals.indexOf(seal) === 1 ? 2 : this.diff === 'easy' ? 2.5 : 3)),
       });
     }
 
@@ -152,11 +152,57 @@ export class CourageChallenge {
   }
 
   // Breadth-first path on the grid (8-connected, no corner cutting) -> list of world points.
+  // Nearest walkable, reachable forest cell to p (spirits never target or stand outside the forest).
+  clampToForest(p) {
+    const g = this.grid;
+    const k0 = this.cellOf(p.x, p.z);
+    if (k0 >= 0 && this.reach[k0] && g.free[k0]) return p.clone().setY(0);
+    const ci = Math.min(g.w - 1, Math.max(0, Math.floor((p.x - g.minX) / CELL)));
+    const cj = Math.min(g.h - 1, Math.max(0, Math.floor((p.z - g.minZ) / CELL)));
+    for (let r = 1; r < 60; r++) {
+      let best = -1;
+      let bd = Infinity;
+      for (let j = cj - r; j <= cj + r; j++) {
+        for (let i = ci - r; i <= ci + r; i++) {
+          if (i < 0 || j < 0 || i >= g.w || j >= g.h || (Math.abs(i - ci) !== r && Math.abs(j - cj) !== r)) continue;
+          const k = j * g.w + i;
+          if (!this.reach[k] || !g.free[k]) continue;
+          const dd = (i - ci) ** 2 + (j - cj) ** 2;
+          if (dd < bd) {
+            bd = dd;
+            best = k;
+          }
+        }
+      }
+      if (best >= 0) {
+        const i = best % g.w;
+        return new THREE.Vector3(g.minX + (i + 0.5) * CELL, 0, g.minZ + ((best - i) / g.w + 0.5) * CELL);
+      }
+    }
+    return this.entry.clone();
+  }
+
+  // Keep a target inside the spirit's territory and inside the forest.
+  territorial(s, p) {
+    const c = s.territory?.c || s.home;
+    const r = s.aggressive ? 1e9 : s.territory?.r || 14;
+    const q = p.clone().setY(0);
+    const dx = q.x - c.x;
+    const dz = q.z - c.z;
+    const d = Math.hypot(dx, dz);
+    if (d > r) q.set(c.x + (dx / d) * r, 0, c.z + (dz / d) * r);
+    return this.clampToForest(q);
+  }
+
   path(from, to, maxNodes = 4000) {
+    if (this.grid) {
+      from = this.clampToForest(from);
+      to = this.clampToForest(to);
+    }
     const g = this.grid;
     const s = this.cellOf(from.x, from.z);
     const t = this.cellOf(to.x, to.z);
-    if (s < 0 || t < 0) return [to.clone()];
+    if (s < 0 || t < 0) return []; // never a straight line out of the forest (see clampToForest)
     const prev = new Map([[s, s]]);
     const q = [s];
     let best = s;
@@ -231,11 +277,35 @@ export class CourageChallenge {
     return { q: this.curve.getPointAt((a + b) / 2).setY(0), t: (a + b) / 2 };
   }
 
-  // Trial 1 and 2 seals (trial 3's seal sits at the Rokurokubi's lantern, see spawnHunter).
+  // Trial 1: three ruined shrines off the first stretch of path; only one is true. Sacred marks that only
+  // show in lantern light lead from the path to it. Trial 2's seal sits in the guardian's clearing.
   placeSeals() {
-    const s1 = this.pickSpot(0.13, 0.3, 3, 6, [this.entry]);
+    const a = this.pickSpot(0.11, 0.18, 3.5, 6, [this.entry]);
+    const b = this.pickSpot(0.2, 0.26, 3.5, 6, [this.entry, a.q]);
+    const c = this.pickSpot(0.27, 0.33, 3.5, 6, [this.entry, a.q, b.q]);
+    this.shrines = [a, b, c].map((x) => ({ pos: x.q, t: x.t, used: false, isTrue: false }));
+    this.trueShrine = this.shrines[Math.floor(Math.random() * 3)];
+    this.trueShrine.isTrue = true;
+    const s1 = { q: this.trueShrine.pos.clone().add(new THREE.Vector3(0, 0, 0.01)) };
     const s2 = this.pickSpot(0.45, 0.56, 3, 5, [s1.q]);
     [s1.q, s2.q].forEach((q, i) => this.seals[i].pos.copy(q));
+    for (const sh of this.shrines) {
+      if (sh.registered) continue;
+      sh.registered = true;
+    }
+    if (!this.shrineHooks) {
+      this.shrineHooks = true;
+      for (let i = 0; i < 3; i++) {
+        this.ctx.world.addInteractable({
+          id: 'courage-shrine', pos: new THREE.Vector3(), radius: 1.6, priority: true,
+          get label() { return 'Offer a prayer at the shrine'; },
+          enabled: () => this.running && this.trial === 1 && this.shrines?.[i] && !this.shrines[i].used && G.player.pos.distanceTo(this.shrines[i].pos) < 1.7,
+          action: () => this.pray(this.shrines[i]),
+        });
+        const it = this.ctx.world.interactables[this.ctx.world.interactables.length - 1];
+        Object.defineProperty(it, 'pos', { get: () => this.shrines?.[i]?.pos || this.entry });
+      }
+    }
     this.seals.forEach((s) => {
       s.g.position.copy(s.pos);
       s.g.visible = false;
@@ -287,6 +357,7 @@ export class CourageChallenge {
     this.ctx.world.scene.add(g);
     return {
       kind, g, model, glow, cone, mark, R, fovCos: Math.cos(half), modelKey, mixer, float: modelKey === 'hannya' || modelKey === 'tengu',
+      territory: { c: (kind === 'wander' ? this.curve.getPointAt((a + b) / 2) : home).clone().setY(0), r: kind === 'hunter' ? 24 : kind === 'watch' ? 11 : 15 },
       pos: home.clone(), home: home.clone(), homeHeading: heading, heading, a, b,
       t: a + Math.random() * Math.max(0.001, b - a), dir: 1, pause: 0, look: 0,
       state: 'patrol', sus: 0, route: [], routeT: 0, lostT: 0, stun: 0, waitT: 0, target: home.clone(), senseT: Math.random() * 0.1,
@@ -300,10 +371,23 @@ export class CourageChallenge {
     // Fewer, purposeful spirits: Trial 1 has one light-drawn wanderer on Easy, two otherwise.
     const t1 = this.diff === 'easy' ? [[0.12, 0.3]] : [[0.08, 0.19], [0.2, 0.32]];
     for (const [a, b] of t1) this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(a).setY(0), 0, a, b), { trial: 1 }));
-    // Kodama: keep four as alarms at choke points (one per trial stretch and the entrance), hide the rest.
+    // Kodama are forest spirits, not enemies: one guide watches over the true shrine of trial 1,
+    // two act as alarms at choke points (trials 2 and 3); the rest stay hidden during the challenge.
     const kd = this.kimo.kodama || [];
-    const keep = new Set([1, 4, 7, 10]);
-    kd.forEach((k, i) => (k.visible = keep.has(i)));
+    const alarms = new Set([5, 9]);
+    kd.forEach((k, i) => {
+      k.visible = alarms.has(i);
+      k.userData.role = alarms.has(i) ? 'alarm' : null;
+    });
+    if (this.trueShrine && kd.length) {
+      const guide = kd.filter((_, i) => !alarms.has(i)).sort((a, b) => a.position.distanceTo(this.trueShrine.pos) - b.position.distanceTo(this.trueShrine.pos))[0];
+      const spot = this.clampToForest(this.trueShrine.pos.clone().add(new THREE.Vector3(1.6, 0, -1.2)));
+      guide.userData.home = guide.userData.home || guide.position.clone();
+      guide.position.copy(spot);
+      guide.visible = true;
+      guide.userData.role = 'guide';
+      this.guideKodama = guide;
+    }
     // Trial 2 — a guardian watcher stares at the second seal; one wanderer passes nearby.
     const seal = this.seals[1];
     let post = null;
@@ -516,7 +600,8 @@ export class CourageChallenge {
     gate(0.37, '二');
     gate(0.63, '三');
     // Seal shrines: a small ruined hokora at seals 1 and 2, reached by stepping stones from the path.
-    for (const seal of this.seals.slice(0, 2)) {
+    const shrineSites = [...(this.shrines || []).map((x) => ({ pos: x.pos })), { pos: this.seals[1].pos }];
+    for (const seal of shrineSites) {
       const sh = new THREE.Group();
       const base = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 0.7), stone);
       base.position.y = 0.17;
@@ -541,6 +626,29 @@ export class CourageChallenge {
         L.add(st);
       }
     }
+    // Sacred marks: glowing kanji on the ground from the path to the true shrine — visible only in lantern light.
+    this.marks = [];
+    if (this.trueShrine) {
+      const tex = canvasTexture(64, 64, (c, w, h) => {
+        c.clearRect(0, 0, w, h);
+        c.fillStyle = '#bfe8ff';
+        c.font = 'bold 46px "Yu Mincho", serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText('封', w / 2, h / 2 + 2);
+      });
+      const from = this.curve.getPointAt(Math.max(0.02, this.trueShrine.t - 0.04));
+      const to = this.trueShrine.pos;
+      const steps = Math.max(3, Math.round(from.distanceTo(to) / 1.6));
+      for (let k = 1; k < steps; k++) {
+        const u = k / steps;
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+        m.position.set(from.x + (to.x - from.x) * u, 0.04, from.z + (to.z - from.z) * u);
+        m.rotation.y = Math.random() * 0.6;
+        L.add(m);
+        this.marks.push(m);
+      }
+    }
     // Hitodama: a few pale ghost-lights drifting near the path, always a little ahead of the player.
     this.wisps = [];
     for (let i = 0; i < 5; i++) {
@@ -559,6 +667,12 @@ export class CourageChallenge {
   }
 
   updateLevel(dt, t, P) {
+    // Sacred marks glow only inside the lantern's light.
+    for (const m of this.marks || []) {
+      const d = Math.hypot(m.position.x - P.pos.x, m.position.z - P.pos.z);
+      const want = this.trial === 1 && this.lanternOn && d < 6.5 ? 0.85 : 0;
+      m.material.opacity += (want - m.material.opacity) * Math.min(1, dt * 4);
+    }
     for (const g of this.guides || []) {
       g.flame.material.opacity = 0.45 + Math.sin(t * 5 + g.t * 40) * 0.12 + (Math.random() < 0.01 ? -0.3 : 0);
     }
@@ -674,6 +788,56 @@ export class CourageChallenge {
     this.hunter = s;
   }
 
+  // Seal 1: praying at a false shrine chills you (fear), the true one releases the first seal.
+  pray(sh) {
+    sh.used = true;
+    if (!sh.isTrue) {
+      this.fear = Math.min(100, this.fear + 14);
+      sfx.whisper?.();
+      this.ctx.ui.toast('Cold fingers brush your neck… this shrine is empty. Look for the sacred marks.');
+      return;
+    }
+    sfx.suzu();
+    this.collect(this.seals[0]);
+  }
+
+  // Rituals (seals 2 and 3): stay beside the seal, unseen, while the ritual completes.
+  startRitual(seal, dur) {
+    if (this.ritual) return;
+    this.ritual = { seal, t: 0, dur, at: G.player.pos.clone() };
+    sfx.chime();
+  }
+
+  updateRitual(dt, P) {
+    const r = this.ritual;
+    if (!r) return;
+    const moved = Math.hypot(P.pos.x - r.seal.pos.x, P.pos.z - r.seal.pos.z) > 1.9;
+    const seenBy = this.spirits.find((s) => s.seen && !s.aggressive);
+    if (moved || seenBy) {
+      this.ritual = null;
+      sfx.fail?.();
+      this.ctx.ui.toast(moved ? 'You stepped away — the ritual fades.' : 'You were seen — the ritual is broken!');
+      return;
+    }
+    r.t += dt;
+    if (r.t >= r.dur) {
+      this.ritual = null;
+      this.collect(r.seal);
+    }
+  }
+
+  // Ofuda ward (R): a limited protective charm — spirits' senses dim for a few seconds and anything
+  // chasing you loses track and searches where it last saw you.
+  useWard() {
+    if (this.charms <= 0 || this.ward > 0) return;
+    this.charms--;
+    this.ward = 6;
+    sfx.suzu();
+    for (const s of this.spirits) if (s.state === 'chase') s.lostT = 99;
+    document.body.classList.add('ward');
+    this.ctx.ui.toast(`The ofuda flares — the spirits lose your scent (${this.charms} left)`);
+  }
+
   // Player tools: the hand lantern (L) and pebbles to throw (Q).
   key(code) {
     if (!this.running) return;
@@ -682,6 +846,7 @@ export class CourageChallenge {
       this.ctx.ui.toast(this.lanternOn ? 'Lantern lit — you can see, but so can they.' : 'Lantern dimmed — harder to see, harder to be seen.');
     }
     if (code === 'KeyQ') this.throwPebble();
+    if (code === 'KeyR') this.useWard();
   }
 
   throwPebble() {
@@ -715,11 +880,11 @@ export class CourageChallenge {
     };
     this.ctx.ui.complete(
       `<div class="dlg-role">肝試し · Test of Courage</div><h2 class="fin">The Three Trials</h2>
-       <p><b>1 · Darkness and Light</b> — the first seal only shows itself in lantern light, but the spirits are drawn to light.<br>
-       <b>2 · Outwit the Guardian</b> — a spirit never takes its eyes off the second seal. Draw it away.<br>
-       <b>3 · Escape the Rokurokubi</b> — take the last seal from her lantern and escape to the shrine gate. She cannot enter the light of the stone lanterns.</p>
+       <p><b>1 · The Hidden Shrine</b> — three ruined shrines, one true. Sacred marks glow only in lantern light, and light draws the spirits.<br>
+       <b>2 · Outwit the Guardian</b> — a spirit watches the second seal. Lure it away and perform the ritual unseen.<br>
+       <b>3 · The Rokurokubi</b> — take the last seal from beside her lantern, then escape to the gate. She cannot enter the light of the stone lanterns.</p>
        <p class="muted"><b>E</b> take a seal · <b>C</b> crouch (harder to see, silent) · <b>Shift</b> run (spirits hear it) · <b>L</b> hand lantern (see more, be seen more; limited oil) · <b>Q</b> throw a pebble (spirits investigate the noise). Spirits cannot see through trees. Being spotted, chased or caught raises your <b>fear</b> — at 100% you flee the forest.</p>
-       <p class="muted">Easy 4:00 · Normal 3:00 · Hard 2:10 (higher score multiplier)</p>`,
+       <p class="muted">No time limit while you explore — only the final escape is timed. If terror overwhelms you, you wake at the last shrine you reached. <b>R</b> burns one of your ofuda charms: for a few seconds the spirits cannot sense you.</p>`,
       [
         [`Easy${best('easy')}`, () => this.start('easy')],
         [`Normal${best('normal')}`, () => this.start('normal')],
@@ -733,7 +898,13 @@ export class CourageChallenge {
     this.buildGrid();
     this.diff = diff;
     this.d = DIFF[diff];
-    this.timer = this.d.time;
+    this.timer = 0; // elapsed time (no global limit; only the final escape has a countdown)
+    this.checkpoint = this.entry.clone();
+    this.faints = 0;
+    this.charms = 2;
+    this.ward = 0;
+    this.ritual = null;
+    this.reedSearch = 0;
     this.fear = 0;
     this.spotted = 0;
     this.caught = 0;
@@ -785,12 +956,15 @@ export class CourageChallenge {
 
   collect(seal) {
     if (seal.taken || !this.running) return;
+    seal.g.scale.setScalar(1);
+    seal.g.visible = true;
     seal.taken = true;
     seal.anim = 0.001;
     this.found++;
     this.fuel = Math.min(100, this.fuel + 30); // each seal glows with enough light to refill the lantern a little
     this.pebbles += 2;
     this.trial = this.found + 1;
+    this.checkpoint = this.clampToForest(seal.pos.clone().add(new THREE.Vector3(0.8, 0, 0.8)));
     // A trial won is a breather: its spirits lose interest and drift home, and fear eases.
     for (const sp of this.spirits) {
       if ((sp.trial || 3) > this.found) continue;
@@ -812,6 +986,7 @@ export class CourageChallenge {
     } else {
       // Trial 3: taking her seal wakes the Rokurokubi. Escape to the shrine gate.
       this.exitBeacon.visible = true;
+      this.gate = this.d.gate + 15; // only the final escape is timed
       if (this.hunter) {
         this.hunter.state = 'chase';
         this.hunter.aggressive = true;
@@ -847,8 +1022,8 @@ export class CourageChallenge {
     };
     if (!won) {
       this.ctx.ui.complete(
-        `<div class="dlg-role">Test of Courage · ${this.d.label}</div><h2 class="fin">${reason === 'gate' ? 'The shrine gate closed' : reason === 'time' ? 'The night closes in' : 'Fear takes hold'}</h2>
-         <p>${reason === 'gate' ? 'The gate sealed itself before you reached it.' : reason === 'time' ? 'The timer ran out before you escaped the forest.' : 'Your fear reached 100% and you fled the forest.'} Seals found: <b>${this.found} / 3</b>.</p>`,
+        `<div class="dlg-role">Test of Courage · ${this.d.label}</div><h2 class="fin">${reason === 'gate' ? 'The shrine gate closed' : 'Fear takes hold'}</h2>
+         <p>${reason === 'gate' ? 'The gate sealed itself three times before you reached it.' : 'Terror overwhelmed you three times and you fled the forest.'} Seals found: <b>${this.found} / 3</b>.</p>`,
         [['Retry', retry], ['Return to the festival', leave]],
       );
       return;
@@ -867,7 +1042,7 @@ export class CourageChallenge {
     this.ctx.ui.complete(
       `<div class="dlg-role">Test of Courage · ${this.d.label}</div><h2 class="fin">Rank ${s.rank} — ${s.title}</h2>
        <p>Score <b>${s.total}</b>${bestText}</p>
-       <p class="muted">Completion ${s.base} · time left ${Math.ceil(this.timer)}s (+${s.time}) · seals +${s.seals} · spotted ${this.spotted}× (−${s.spot}) · caught ${this.caught}× (−${s.catch}) · fear ${Math.round(this.fear)}% (−${s.fearP}) · ×${this.d.mult} difficulty</p>`,
+       <p class="muted">Completion ${s.base} · time ${Math.round(this.timer)}s (+${s.time}) · faints ${this.faints} · seals +${s.seals} · spotted ${this.spotted}× (−${s.spot}) · caught ${this.caught}× (−${s.catch}) · fear ${Math.round(this.fear)}% (−${s.fearP}) · ×${this.d.mult} difficulty</p>`,
       [['Retry', retry], ['Return to the festival', leave]],
     );
   }
@@ -875,9 +1050,9 @@ export class CourageChallenge {
   // Trial banner + one-line hint (the HUD keeps it; the toast announces it).
   banner(n) {
     const T = {
-      1: ['Trial 1 · Darkness and Light', 'The seal only shows itself in your lantern’s light — but these spirits are drawn to light. Flash it, then go dark (L).'],
-      2: ['Trial 2 · Outwit the Guardian', 'Its gaze never leaves the seal. Throw a pebble (Q) away from it and take the seal while it searches — hide in the reeds (E) if it turns back.'],
-      3: ['Trial 3 · Escape the Rokurokubi', 'Her seal rests at her lantern. Reach it unseen — crouch (C) and keep trees between you.'],
+      1: ['Trial 1 · The Hidden Shrine', 'Three ruined shrines hide in the trees; only one is true. Sacred marks glow in lantern light — but light draws the spirits. Pray at the right shrine (E).'],
+      2: ['Trial 2 · Outwit the Guardian', 'Its gaze never leaves the seal. Lure it away with a pebble (Q), then perform the ritual (E) unseen — it takes a moment. Hide in the reeds if it turns back.'],
+      3: ['Trial 3 · The Rokurokubi', 'Her seal rests at her lantern. She notices lantern light from far away — go dark, crouch, keep trees between you, then perform the ritual beside her.'],
       4: ['Escape!', 'She is awake. Dash from stone lantern to stone lantern (she cannot enter their light), or vanish into the reeds before she sees — then reach the shrine gate.'],
     };
     this.trialText = T[n];
@@ -899,7 +1074,11 @@ export class CourageChallenge {
       this.ctx.world.scene.remove(this.level);
       this.level = null;
     }
-    for (const k of this.kimo.kodama || []) k.visible = true;
+    for (const k of this.kimo.kodama || []) {
+      k.visible = true;
+      if (k.userData.home) k.position.copy(k.userData.home);
+      k.userData.role = null;
+    }
     this.reedEl?.classList.remove('on', 'seen');
     this.chipEl?.classList.remove('on');
     this.dangerEl?.classList.remove('on');
@@ -921,11 +1100,11 @@ export class CourageChallenge {
   // Deterministic, transparent score.
   score() {
     const base = 1000;
-    const time = Math.round(Math.max(0, this.timer) * 8);
+    const time = Math.round(Math.max(0, 600 - this.timer) * 1.2); // efficiency bonus, no hard limit
     const seals = this.found * 200;
     const spot = this.spotted * 60;
     const c = this.caught * 150;
-    const fearP = Math.round(this.fear * 3);
+    const fearP = Math.round(this.fear * 3) + (this.faints || 0) * 200;
     const total = Math.max(0, Math.round((base + time + seals - spot - c - fearP) * this.d.mult));
     const [, rank, title] = RATINGS.find(([min]) => total >= min);
     return { base, time, seals, spot, catch: c, fearP, total, rank, title };
@@ -936,12 +1115,13 @@ export class CourageChallenge {
     const s = String(Math.floor(Math.max(0, this.timer) % 60)).padStart(2, '0');
     const fear = Math.round(this.fear);
     const objective = this.trialText?.[0] || 'The Three Trials';
+    const ritual = this.ritual ? ` · <b style="color:#ffd24a">Ritual ${(this.ritual.t).toFixed(1)} / ${this.ritual.dur}s — stay still and unseen</b>` : '';
     const alarm = this.spirits.some((x) => x.state === 'chase') ? 'A spirit is chasing you!' : this.spirits.some((x) => x.state === 'investigate') ? 'Something is searching…' : '';
     const gate = this.gate !== null ? ` · <span style="color:#ff8a7a">Gate closes in <b>${Math.ceil(this.gate)}s</b></span>` : '';
     this.ctx.ui.gameHud(`<div class="gh-title">肝試し · ${objective}</div>
-      <div>Seals <b>${this.found} / 3</b> · <b>${m}:${s}</b>${gate} · Fear <b>${fear}%</b> ${alarm ? `· <span style="color:#ff8a7a">${alarm}</span>` : ''}</div>
+      <div>Seals <b>${this.found} / 3</b> · ${m}:${s}${gate} · Fear <b>${fear}%</b>${ritual} ${alarm ? `· <span style="color:#ff8a7a">${alarm}</span>` : ''}</div>
       <div class="gf-dev">${this.trialText?.[1] || ''}</div>
-      <div class="gf-dev">Lantern ${this.lanternOn ? 'lit' : 'dark'} · oil ${Math.round(this.fuel)}% (L) · pebbles ${this.pebbles} (Q) · crouch C${this.inSafe(G.player.pos) ? ' · <b style="color:#ffc27a">safe in the lantern light</b>' : ''}${this.hidden ? ` · <b style="color:#9ad88a">${this.hideSeen ? 'hiding — but it saw you!' : 'hidden in the reeds'}</b>` : ''}</div>
+      <div class="gf-dev">Lantern ${this.lanternOn ? 'lit' : 'dark'} · oil ${Math.round(this.fuel)}% (L) · pebbles ${this.pebbles} (Q) · ofuda ${this.charms}${this.ward > 0 ? ` <b style="color:#ffd24a">active ${Math.ceil(this.ward)}s</b>` : ''} (R) · crouch C${this.inSafe(G.player.pos) ? ' · <b style="color:#ffc27a">safe in the lantern light</b>' : ''}${this.hidden ? ` · <b style="color:#9ad88a">${this.hideSeen ? 'hiding — but it saw you!' : 'hidden in the reeds'}</b>` : ''}</div>
       <div class="bar"><span style="width:${fear}%;background:${fear > 70 ? '#ff5a5a' : fear > 40 ? '#ffb05a' : '#7cf29a'}"></span></div>`);
   }
 
@@ -949,12 +1129,14 @@ export class CourageChallenge {
   update(dt, t) {
     if (!this.running) return;
     const P = G.player;
-    this.timer -= dt;
-    if (this.timer <= 0) return this.end(false, 'time');
+    this.timer += dt;
     if (this.gate !== null) {
       this.gate -= dt;
-      if (this.gate <= 0) return this.end(false, 'gate');
+      if (this.gate <= 0) return this.faint('gate');
     }
+    this.ward = Math.max(0, (this.ward || 0) - dt);
+    if (this.ward <= 0) document.body.classList.remove('ward');
+    this.updateRitual(dt, P);
     // Hand lantern: burns oil while lit; light lets you see but makes you easier to spot.
     if (this.lanternOn) {
       this.fuel = Math.max(0, this.fuel - dt * this.d.fuel);
@@ -1025,6 +1207,11 @@ export class CourageChallenge {
         continue;
       }
       if (idx === 0) {
+        // The first seal rests in the true shrine and only appears when the prayer is answered.
+        s.g.scale.setScalar(0.001);
+        continue;
+      }
+      if (idx === -1) {
         const lit = this.lanternOn && d < 7;
         if (lit && !this.revealed) {
           this.revealed = true;
@@ -1044,6 +1231,34 @@ export class CourageChallenge {
     }
 
     this.grace = Math.max(0, (this.grace || 0) - dt);
+    // At most two spirits chase at once; any extra one falls back to searching.
+    const chasers = this.spirits.filter((s) => s.state === 'chase' && !s.aggressive).sort((a, b) => b.sus - a.sus);
+    for (const s of chasers.slice(2)) {
+      s.state = 'investigate';
+      s.target = this.territorial(s, s.lastSeenPos || s.pos);
+      s.route = this.path(s.pos, s.target);
+      s.waitT = 0;
+    }
+    // The Rokurokubi's neck rises over the reeds: if she searches right beside your hiding place, she
+    // finds you after a few seconds (a clear warning first) — hiding is not an invincibility button.
+    const h = this.hunter;
+    if (h && this.hidden && !this.hideSeen && (h.state === 'investigate' || h.aggressive) && h.pos.distanceTo(this.hidden.pos) < 3.2) {
+      this.reedSearch += dt;
+      if (this.reedSearch > 3.2) {
+        this.hideSeen = true;
+        sfx.scare();
+        this.ctx.ui.toast('Her neck curls over the reeds — she found you! RUN!');
+      }
+    } else this.reedSearch = Math.max(0, this.reedSearch - dt);
+    // Dread: the lantern gutters when something dangerous is near; distant rustles from unseen spirits.
+    const nearDanger = this.spirits.some((s) => (s.kind === 'hunter' || s.state === 'chase') && s.pos.distanceTo(P.pos) < 11);
+    if (nearDanger && this.lanternOn && Math.random() < 0.15) this.kimo.handLight.intensity *= 0.3;
+    this.rustleT = (this.rustleT || 4) - dt;
+    if (this.rustleT <= 0) {
+      this.rustleT = 6 + Math.random() * 8;
+      const unseen = this.spirits.find((s) => s.pos.distanceTo(P.pos) < 18 && !s.seen);
+      if (unseen) sfx.rustle(0.3);
+    }
     for (const rp of this.ripples || []) {
       rp.t += dt;
       rp.r.scale.setScalar(1 + rp.t * 6);
@@ -1066,7 +1281,7 @@ export class CourageChallenge {
     if (zone) threat = 0; // the stone lantern's light is a refuge
     if (threat > 0) this.fear = Math.min(100, this.fear + threat * dt);
     else this.fear = Math.max(0, this.fear - 7 * dt);
-    if (this.fear >= 100) return this.end(false, 'fear');
+    if (this.fear >= 100) return this.faint('fear');
     this.fearEl.style.opacity = Math.max(0, (this.fear - 30) / 70) * 0.85;
     if (this.fear > 25) {
       this.hbT -= dt;
@@ -1095,6 +1310,35 @@ export class CourageChallenge {
     }
   }
 
+  // Checkpoints: overwhelming fear (or the gate closing) sends you back to the last seal shrine instead of
+  // ending the run; spirits calm down and return to their territories.
+  faint(reason) {
+    this.faints++;
+    if (this.faints >= 3) return this.end(false, reason); // three times overwhelmed: the run is lost
+    this.fear = 35;
+    this.hidden = null;
+    this.ritual = null;
+    const P = G.player;
+    P.place(this.checkpoint, P.yaw);
+    P.vel.set(0, 0, 0);
+    for (const s of this.spirits) {
+      s.sus = 0;
+      s.stun = 4;
+      if (!s.aggressive) {
+        s.state = 'return';
+        s.route = this.path(s.pos, s.home);
+      }
+    }
+    if (this.hunter?.aggressive) {
+      // The escape restarts: she returns to her lantern, the gate opens again.
+      this.hunter.pos.copy(this.hunter.home);
+      this.hunter.stun = 3;
+      this.gate = this.d.gate + 15;
+    }
+    sfx.scare();
+    this.ctx.ui.toast(reason === 'gate' ? 'The gate sealed itself… you wake by her lantern. Try the escape again.' : 'Terror overwhelms you… you come to at the last shrine.');
+  }
+
   // Readable state for the player: hidden / seen / searched, the Rokurokubi's direction and distance,
   // and one-time hints the first time a mechanic becomes relevant.
   feedback(dt, P) {
@@ -1103,7 +1347,21 @@ export class CourageChallenge {
     // rattles and calls the nearest idle spirit to come and look where you are.
     for (const k of this.kimo.kodama || []) {
       k.userData.cool = Math.max(0, (k.userData.cool || 0) - dt);
-      if (!k.visible || k.userData.cool > 0 || this.hidden) continue;
+      if (k.userData.role === 'guide') {
+        // The guide kodama watches the true shrine and chimes softly when you come near with a light.
+        const want = Math.atan2(this.trueShrine.pos.x - k.position.x, this.trueShrine.pos.z - k.position.z);
+        k.rotation.y += (Math.atan2(Math.sin(want - k.rotation.y), Math.cos(want - k.rotation.y))) * Math.min(1, dt * 2);
+        if (this.trial === 1 && k.position.distanceTo(P.pos) < 7 && k.userData.cool <= 0) {
+          k.userData.cool = 9;
+          sfx.chime();
+          if (!this.hinted.has('guide')) {
+            this.hinted.add('guide');
+            this.ctx.ui.toast('A kodama gazes at one of the shrines…');
+          }
+        }
+        continue;
+      }
+      if (!k.visible || k.userData.role !== 'alarm' || k.userData.cool > 0 || this.hidden) continue;
       const d = Math.hypot(P.pos.x - k.position.x, P.pos.z - k.position.z);
       const reach = (this.lanternOn ? 4.5 : 2.5) * (1 - 0.4 * P.crouch);
       if (d > reach || !this.clear(k.position.x, k.position.z, P.pos.x, P.pos.z)) continue;
@@ -1137,7 +1395,8 @@ export class CourageChallenge {
     this.reedEl.classList.toggle('on', !!this.hidden);
     this.reedEl.classList.toggle('seen', !!this.hidden && this.hideSeen);
     let chip = '';
-    if (this.hidden) chip = this.hideSeen ? ['IT SAW YOU HIDE — get out and run!', '#ff4a4a', '#fff'] : searching ? ['Hidden · something is searching nearby — stay still', '#e8a52a', '#1a1004'] : ['Hidden in the reeds', '#3a7a3a', '#eaffea'];
+    if (this.hidden) chip = this.hideSeen ? ['IT SAW YOU HIDE — get out and run!', '#ff4a4a', '#fff'] : this.reedSearch > 0.5 ? ['She is searching the reeds right above you — slip out and run!', '#ff7a3a', '#1a0804'] : searching ? ['Hidden · something is searching nearby — stay still', '#e8a52a', '#1a1004'] : ['Hidden in the reeds', '#3a7a3a', '#eaffea'];
+    else if (this.ward > 0) chip = [`Ofuda ward — the spirits cannot sense you (${Math.ceil(this.ward)}s)`, '#c9a23a', '#1a1004'];
     else if (this.inSafe(P.pos) && hunter?.aggressive) chip = ['Safe in the lantern light — she cannot enter', '#c98a2a', '#1a1004'];
     this.chipEl.classList.toggle('on', !!chip);
     if (chip) Object.assign(this.chipEl.style, { background: chip[1], color: chip[2] }), (this.chipEl.textContent = chip[0]);
@@ -1190,6 +1449,14 @@ export class CourageChallenge {
       s.realSeen = s.stun <= 0 && inCone && this.clear(s.pos.x, s.pos.z, P.pos.x, P.pos.z); // true line of sight right now
       s.seen = s.realSeen && (!this.hidden || this.hideSeen);
       s.heard = s.stun <= 0 && !this.hidden && P.running && P.vel.length() > 1 && d < 5;
+      if (this.ward > 0) {
+        s.seen = s.seen && d < 2;
+        s.heard = false;
+      }
+      // The Rokurokubi notices lantern light from far away, even when the player is outside her cone.
+      if (s.kind === 'hunter' && !s.aggressive && this.lanternOn && !this.hidden && d < 14 && this.clear(s.pos.x, s.pos.z, P.pos.x, P.pos.z) && this.ward <= 0) s.lightSeen = true;
+      else s.lightSeen = false;
+      if (s.seen) s.lastSeenPos = P.pos.clone();
       s.closeness = Math.max(0, 1 - d / R);
     }
     if (s.aggressive) {
@@ -1217,7 +1484,10 @@ export class CourageChallenge {
     }
     const gain = this.d.detect * (1 + 0.15 * this.found);
     if (s.seen) s.sus += dt * gain * (0.5 + 1.5 * s.closeness);
-    else if (s.heard) s.sus = Math.max(s.sus, 0.45);
+    else if (s.heard || s.lightSeen) {
+      s.sus = Math.max(s.sus, 0.45);
+      s.lastSeenPos = P.pos.clone();
+    }
     else s.sus = Math.max(0, s.sus - dt * 0.3);
 
     // State transitions
@@ -1229,14 +1499,14 @@ export class CourageChallenge {
       sfx.whisper?.();
     } else if ((s.state === 'patrol' || s.state === 'return') && s.sus > 0.35) {
       s.state = 'investigate';
-      s.target = P.pos.clone();
+      s.target = this.territorial(s, s.lastSeenPos || P.pos);
       s.route = this.path(s.pos, s.target);
       s.waitT = 0;
     }
     if (s.state === 'chase') {
       if (s.seen) {
         s.lostT = 0;
-        if (!s.aggressive) s.target = P.pos.clone(); // the escape sets her own target (lantern edge or player)
+        if (!s.aggressive) s.target = this.territorial(s, P.pos); // never chase beyond its territory / the forest
       } else s.lostT += dt;
       s.routeT -= dt;
       if (s.routeT <= 0) {
@@ -1244,8 +1514,18 @@ export class CourageChallenge {
         s.route = this.path(s.pos, s.target);
       }
       if (s.lostT > this.d.giveUp * (s.kind === 'hunter' ? 1.7 : 1) && !s.aggressive) {
-        s.state = 'return'; // the player broke line of sight long enough
+        // Line of sight broken: it does not track you perfectly — it searches where it last saw you.
+        s.state = 'investigate';
         s.sus = 0.3;
+        s.target = this.territorial(s, s.lastSeenPos || s.target);
+        s.route = this.path(s.pos, s.target);
+        s.waitT = 0;
+        s.waitMax = s.kind === 'hunter' ? 4 : 3;
+      }
+      // Out of its territory: it gives up and goes home.
+      if (!s.aggressive && s.territory && Math.hypot(P.pos.x - s.territory.c.x, P.pos.z - s.territory.c.z) > s.territory.r + 5) {
+        s.state = 'return';
+        s.sus = 0;
         s.route = this.path(s.pos, s.home);
       }
       if (d < 1.0 && s.stun <= 0 && !this.inSafe(P.pos) && (!this.hidden || this.hideSeen)) {
@@ -1334,6 +1614,22 @@ export class CourageChallenge {
       }
     }
 
+    // Stay inside the forest (snap back to the nearest walkable cell if pushed into a tree or out of bounds).
+    if (s.kind !== 'wander' || s.state !== 'patrol') {
+      const k = this.cellOf(s.pos.x, s.pos.z);
+      if (k < 0 || !this.reach[k] || !this.grid.free[k]) s.pos.copy(this.clampToForest(s.pos));
+    }
+    // Separation: spirits never stack on the same spot.
+    for (const o of this.spirits) {
+      if (o === s) continue;
+      const dx = s.pos.x - o.pos.x;
+      const dz = s.pos.z - o.pos.z;
+      const dd = Math.hypot(dx, dz);
+      if (dd < 1.6 && dd > 1e-4 && !(s.state === 'patrol' && s.kind === 'wander')) {
+        s.pos.x += (dx / dd) * (1.6 - dd) * 0.5;
+        s.pos.z += (dz / dd) * (1.6 - dd) * 0.5;
+      }
+    }
     // Visuals
     s.g.position.copy(s.pos);
     s.g.rotation.y = s.heading;

@@ -113,6 +113,7 @@
       #danger { position: fixed; left: 50%; top: 50%; width: 0; height: 0; z-index: 5; pointer-events: none; display: none; }
       #danger.on { display: block; }
       #danger span { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; color: #ff4a4a; font-size: 30px; text-align: center; line-height: 32px; text-shadow: 0 0 12px #ff0000; }
+      body.ward #fear-edge { opacity: 0.9 !important; background: radial-gradient(ellipse 70% 65% at 50% 50%, rgba(0,0,0,0) 55%, rgba(200,160,40,0.45) 100%); }
       #fear-edge { position: fixed; inset: 0; pointer-events: none; z-index: 4; opacity: 0; transition: opacity 0.4s;
         background: radial-gradient(ellipse 70% 65% at 50% 50%, rgba(0,0,0,0) 55%, rgba(120,0,10,0.55) 100%); }
       body.courage #quest { display: none !important; }

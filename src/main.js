@@ -372,6 +372,7 @@ addEventListener('keydown', (e) => {
       break;
     case 'KeyL':
     case 'KeyQ':
+    case 'KeyR':
       kimo?.courage?.key(e.code); // Test of Courage tools: hand lantern, throw a pebble
       break;
     case 'Backquote':
