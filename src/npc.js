@@ -127,21 +127,76 @@ export class Action extends BTNode {
 // Procedural yukata character
 // =====================================================================
 const patternCache = new Map();
-function yukataTexture(base, accent) {
-  const key = base + accent;
+// Traditional yukata prints: sakura, asanoha (hemp-leaf), stripes, seigaiha (waves), kasuri dots, kikkō.
+const PATTERNS = ['sakura', 'asanoha', 'stripes', 'waves', 'dots', 'kikko'];
+function yukataTexture(base, accent, pattern = 'sakura') {
+  const key = base + accent + pattern;
   if (patternCache.has(key)) return patternCache.get(key);
   const tex = canvasTexture(128, 128, (g, w, h) => {
     g.fillStyle = base;
     g.fillRect(0, 0, w, h);
     g.fillStyle = accent;
-    for (let i = 0; i < 9; i++) {
-      const x = (i % 3) * 44 + 20 + ((Math.floor(i / 3) % 2) * 22);
-      const y = Math.floor(i / 3) * 44 + 20;
-      for (let p = 0; p < 5; p++) {
-        const a = (p / 5) * Math.PI * 2;
-        g.beginPath();
-        g.ellipse(x + Math.cos(a) * 6, y + Math.sin(a) * 6, 5, 3.4, a, 0, Math.PI * 2);
-        g.fill();
+    g.strokeStyle = accent;
+    if (pattern === 'stripes') {
+      for (let x = 0; x < w; x += 16) {
+        g.fillRect(x, 0, 5, h);
+        g.globalAlpha = 0.5;
+        g.fillRect(x + 8, 0, 1.5, h);
+        g.globalAlpha = 1;
+      }
+    } else if (pattern === 'waves') {
+      g.lineWidth = 2;
+      for (let row = 0; row < 6; row++) {
+        for (let col = -1; col < 5; col++) {
+          const x = col * 32 + (row % 2) * 16;
+          const y = row * 24 + 24;
+          for (const r of [14, 9, 4]) {
+            g.beginPath();
+            g.arc(x, y, r, Math.PI, 0);
+            g.stroke();
+          }
+        }
+      }
+    } else if (pattern === 'dots') {
+      for (let y = 8; y < h; y += 16) for (let x = ((y / 16) % 2) * 8 + 4; x < w; x += 16) g.fillRect(x, y, 5, 3);
+    } else if (pattern === 'asanoha') {
+      g.lineWidth = 1.2;
+      for (let y = 0; y <= h; y += 32) {
+        for (let x = 0; x <= w; x += 32) {
+          for (let k = 0; k < 6; k++) {
+            const a = (k / 6) * Math.PI * 2;
+            g.beginPath();
+            g.moveTo(x, y);
+            g.lineTo(x + Math.cos(a) * 16, y + Math.sin(a) * 16);
+            g.stroke();
+          }
+        }
+      }
+    } else if (pattern === 'kikko') {
+      g.lineWidth = 1.5;
+      for (let row = 0; row < 7; row++) {
+        for (let col = 0; col < 6; col++) {
+          const cx = col * 24 + (row % 2) * 12;
+          const cy = row * 20;
+          g.beginPath();
+          for (let k = 0; k < 6; k++) {
+            const a = (k / 6) * Math.PI * 2 + Math.PI / 6;
+            g.lineTo(cx + Math.cos(a) * 10, cy + Math.sin(a) * 10);
+          }
+          g.closePath();
+          g.stroke();
+        }
+      }
+    } else {
+      for (let i = 0; i < 9; i++) {
+        const x = (i % 3) * 44 + 20 + ((Math.floor(i / 3) % 2) * 22);
+        const y = Math.floor(i / 3) * 44 + 20;
+        for (let p = 0; p < 5; p++) {
+          const a = (p / 5) * Math.PI * 2;
+          g.beginPath();
+          g.ellipse(x + Math.cos(a) * 6, y + Math.sin(a) * 6, 5, 3.4, a, 0, Math.PI * 2);
+          g.fill();
+        }
       }
     }
   }, { repeat: [2, 2] });
@@ -218,6 +273,10 @@ export function makeCharacter({
   hair = pick(HAIRS),
   bun = gender === 'f',
   child = false,
+  pattern = gender === 'f' ? pick(PATTERNS) : pick(['stripes', 'kikko', 'dots', 'asanoha', 'waves']),
+  hairStyle = gender === 'f' ? (bun ? pick(['bun', 'bun', 'bun', 'pony']) : 'long') : pick(['short', 'short', 'topknot']),
+  fan = Math.random() < 0.3,
+  build = rand(0.94, 1.08),
 } = {}) {
   const f = gender === 'f';
   const W = 0.85; // waist height
@@ -267,7 +326,12 @@ export function makeCharacter({
   // Hair
   if (f) {
     plain.push(part(sphere(1, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.56), B.head, hair, { p: [0, HD + 0.016, -0.012], s: [0.106, 0.124, 0.116], r: [-0.72, 0, 0] }));
-    if (bun) {
+    if (hairStyle === 'pony') {
+      // High ponytail tied with a ribbon
+      plain.push(part(sphere(0.04, 12, 8), B.head, hair, { p: [0, HD + 0.07, -0.1] }));
+      plain.push(part(new THREE.CylinderGeometry(0.035, 0.012, 0.2, 10), B.head, hair, { p: [0, HD - 0.03, -0.13], r: [0.25, 0, 0] }));
+      plain.push(part(sphere(0.022, 8, 6), B.head, pick(KANZASHI), { p: [0, HD + 0.07, -0.135], s: [1.6, 0.8, 0.8] }));
+    } else if (bun) {
       plain.push(part(sphere(0.058, 14, 10), B.head, hair, { p: [0, HD + 0.09, -0.085] }));
       const kc = pick(KANZASHI);
       for (let i = 0; i < 3; i++) plain.push(part(sphere(0.014, 8, 6), B.head, kc, { p: [0.04 + i * 0.012, HD + 0.11 + i * 0.008, -0.06] }));
@@ -276,6 +340,14 @@ export function makeCharacter({
     }
   } else {
     plain.push(part(sphere(1, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.5), B.head, hair, { p: [0, HD + 0.014, -0.01], s: [0.104, 0.12, 0.112], r: [-0.55, 0, 0] }));
+    if (hairStyle === 'topknot') plain.push(part(new THREE.CylinderGeometry(0.018, 0.022, 0.07, 8), B.head, hair, { p: [0, HD + 0.115, -0.02], r: [0.6, 0, 0] }));
+    // Hachimaki / tenugui headband on some men
+    else if (Math.random() < 0.3) plain.push(part(new THREE.CylinderGeometry(0.108, 0.108, 0.025, 20, 1, true), B.head, pick(['#f4efe6', '#b3202a', '#1f3a73']), { p: [0, HD + 0.03, -0.004], r: [-0.12, 0, 0] }));
+  }
+  // An uchiwa fan in the right hand for some visitors.
+  if (fan && !child) {
+    plain.push(part(new THREE.CylinderGeometry(0.006, 0.006, 0.12, 5), B.armR, '#a07a4a', { p: [-0.205, SH - 0.58, 0.04] }));
+    plain.push(part(new THREE.CylinderGeometry(0.075, 0.075, 0.006, 16).rotateX(Math.PI / 2), B.armR, pick(['#f4f0e6', '#ffd9e0', '#d6ecff', '#ffe9a8']), { p: [-0.205, SH - 0.7, 0.04] }));
   }
   // Geta sandals with tabi-white feet
   for (const [side, bone] of [[1, B.footL], [-1, B.footR]]) {
@@ -285,7 +357,7 @@ export function makeCharacter({
   }
 
   const geo = mergeGeometries([mergeGeometries(cloth), mergeGeometries(plain)], true);
-  const clothMat = new THREE.MeshStandardMaterial({ map: yukataTexture(yukata[0], yukata[1]), roughness: 0.85 });
+  const clothMat = new THREE.MeshStandardMaterial({ map: yukataTexture(yukata[0], yukata[1], pattern), roughness: 0.85 });
   const plainMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65 });
 
   const bones = [0, 1, 2, 3, 4, 5, 6].map(() => new THREE.Bone());
@@ -308,42 +380,96 @@ export function makeCharacter({
   const holder = new THREE.Group();
   holder.add(mesh);
   holder.scale.setScalar((child ? 0.68 : 1) * (f ? rand(0.93, 1.0) : rand(1.0, 1.08)));
-  return { root: holder, upper, head, armL, armR, footL, footR, phase: Math.random() * 10, pose: {} };
+  mesh.scale.set(build, 1, 0.5 + build * 0.5); // slimmer / sturdier builds
+  return { root: holder, upper, head, armL, armR, footL, footR, phase: Math.random() * 10, gait: 0, pose: {}, look: { t: 0, y: 0, x: 0 } };
 }
 
 // Pose targets are damped so transitions between animations blend smoothly.
+// Walk: a stride-matched gait — each foot is planted (moving backward exactly as fast as the body moves
+// forward, so feet never skate), then swings forward with a lift and toe pitch. Hips sway over the stance
+// foot, the body bobs twice per cycle and leans with speed, arms swing against the legs, the head stays level.
+const smooth = (k) => k * k * (3 - 2 * k);
+function footCycle(u, A, lift) {
+  const ST = 0.6; // stance share of the cycle
+  if (u < ST) return { z: A - 2 * A * (u / ST), y: 0, p: 0 };
+  const k = (u - ST) / (1 - ST);
+  return { z: -A + 2 * A * smooth(k), y: Math.sin(k * Math.PI) * lift, p: -Math.sin(k * Math.PI) * 0.45 + (k > 0.85 ? (k - 0.85) * 1.5 : 0) };
+}
 export function animate(c, anim, speed, dt, t) {
   const P = {
-    uX: 0, uY: 0.85, uRY: 0, hX: 0, hY: 0,
+    uX: 0.02, uY: 0.85, uRY: 0, uZ: 0, uPX: 0, hX: 0, hY: 0,
     lX: 0, lZ: 0.08, rX: 0, rZ: -0.08,
-    fl: 0, fr: 0, jump: 0,
+    fl: 0, fr: 0, flY: 0, frY: 0, flP: 0, frP: 0, jump: 0,
   };
+  // Occasional glances: a slowly re-targeted head look shared by idle poses.
+  c.look = c.look || { t: 0, y: 0, x: 0 };
+  c.look.t -= dt;
+  if (c.look.t <= 0) {
+    c.look.t = 1.5 + Math.random() * 3.5;
+    c.look.y = (Math.random() - 0.5) * 1.0;
+    c.look.x = (Math.random() - 0.5) * 0.25;
+  }
+  let walking = false;
   switch (anim) {
     case 'walk': {
-      c.phase += dt * speed * 5.2;
-      const s = Math.sin(c.phase);
-      P.fl = s * 0.13;
-      P.fr = -s * 0.13;
-      P.lX = -s * 0.4;
-      P.rX = s * 0.4;
-      P.uY = 0.85 + Math.abs(Math.cos(c.phase)) * 0.025;
-      P.uRY = Math.sin(c.phase) * 0.09; // shoulders counter-rotate against the stride
+      walking = true;
+      const v = Math.max(0.2, speed);
+      const A = Math.min(0.17, 0.08 + 0.055 * v); // half stride (a yukata limits the step)
+      c.gait = ((c.gait || 0) + (dt * 0.6 * v) / (2 * A)) % 1; // stance foot speed == body speed
+      const u = c.gait;
+      const L = footCycle(u, A, 0.045 + 0.02 * v);
+      const R = footCycle((u + 0.5) % 1, A, 0.045 + 0.02 * v);
+      P.fl = L.z;
+      P.fr = R.z;
+      P.flY = L.y;
+      P.frY = R.y;
+      P.flP = L.p;
+      P.frP = R.p;
+      const sw = Math.sin(u * Math.PI * 2);
+      P.lX = (R.z / A) * (0.22 + 0.12 * v); // arm swings with the opposite leg
+      P.rX = (L.z / A) * (0.22 + 0.12 * v);
+      P.lZ = 0.1;
+      P.rZ = -0.1;
+      P.uY = 0.85 + (1 - Math.cos(u * Math.PI * 4)) * 0.011; // lowest at double support
+      P.uPX = sw * 0.018; // weight over the stance foot
+      P.uZ = -sw * 0.03;
+      P.uRY = sw * 0.08; // shoulders counter-rotate against the stride
+      P.uX = 0.03 + 0.03 * v;
+      P.hY = -P.uRY * 0.9 + c.look.y * 0.25; // head stabilised, eyes ahead with a glance now and then
+      P.hX = -P.uX * 0.6;
       break;
     }
+    case 'talk':
+      // Conversation: open-hand gestures, small nods and weight shifts.
+      P.rX = -0.55 + Math.sin(t * 2.6 + c.phase) * 0.25;
+      P.rZ = -0.25 + Math.sin(t * 1.7) * 0.1;
+      P.lX = -0.2 + Math.max(0, Math.sin(t * 1.3 + 1)) * -0.45;
+      P.lZ = 0.15;
+      P.hX = Math.sin(t * 3.4) * 0.07;
+      P.hY = Math.sin(t * 0.8 + c.phase) * 0.12;
+      P.uPX = Math.sin(t * 0.6 + c.phase) * 0.012;
+      P.uY = 0.85 + Math.sin(t * 1.6) * 0.004;
+      break;
     case 'eat':
       P.rX = -1.7 + Math.max(0, Math.sin(t * 2.4)) * 0.5;
       P.rZ = 0.25;
       P.lX = -0.7;
       P.hX = 0.12;
+      P.uPX = Math.sin(t * 0.5 + c.phase) * 0.01;
       break;
     case 'watch':
       P.hX = -0.45;
       P.lX = -0.3;
       P.rX = -0.3;
+      P.uY = 0.85 + Math.sin(t * 1.5 + c.phase) * 0.004;
       break;
     case 'look':
-      P.hX = 0.2;
-      P.hY = Math.sin(t * 0.6) * 0.4;
+      P.hX = 0.2 + c.look.x * 0.5;
+      P.hY = Math.sin(t * 0.6) * 0.3 + c.look.y * 0.4;
+      P.uPX = Math.sin(t * 0.45 + c.phase) * 0.014;
+      P.uZ = -P.uPX * 1.2;
+      P.lX = -0.15;
+      P.rX = -0.15;
       break;
     case 'cheer':
       P.lZ = 2.6 + Math.sin(t * 12) * 0.25;
@@ -354,6 +480,7 @@ export function animate(c, anim, speed, dt, t) {
     case 'wave':
       P.lZ = 2.5 + Math.sin(t * 11) * 0.35;
       P.hY = 0.1;
+      P.uZ = -0.04;
       break;
     case 'pray':
       P.lX = -1.25;
@@ -375,21 +502,40 @@ export function animate(c, anim, speed, dt, t) {
     case 'drum': {
       // Two alternating strikes, timed from G.drumHit elsewhere via c.strike
       const k = c.strike || 0;
-      P.lX = -1.2 - (c.strikeSide === 0 ? k : 0) * 1.1 + 0.9 * (c.strikeSide === 0 ? 0 : 0);
+      P.lX = -1.2 - (c.strikeSide === 0 ? k : 0) * 1.1;
       P.rX = -1.2 - (c.strikeSide === 1 ? k : 0) * 1.1;
       P.uX = 0.1;
       break;
     }
-    default: // idle
-      P.uY = 0.85 + Math.sin(t * 2 + c.phase) * 0.006;
-      P.hY = Math.sin(t * 0.4 + c.phase) * 0.25;
+    default: // idle: breathing, slow weight shift between the feet, relaxed arms, glances around
+      P.uY = 0.85 + Math.sin(t * 1.7 + c.phase) * 0.005;
+      P.uPX = Math.sin(t * 0.35 + c.phase) * 0.016;
+      P.uZ = -P.uPX * 1.4;
+      P.hY = c.look.y;
+      P.hX = c.look.x;
+      P.lZ = 0.1 + Math.sin(t * 1.7 + c.phase) * 0.02;
+      P.rZ = -0.1 - Math.sin(t * 1.7 + c.phase) * 0.02;
+      P.lX = -0.06;
+      P.rX = -0.06;
+  }
+  if (!walking) c.gait = 0;
+  // Turning in place: a small step of the feet in the turn direction.
+  const turn = c.turnRate || 0;
+  if (!walking && Math.abs(turn) > 0.6) {
+    const ph = Math.sin(t * 9);
+    P.flY = Math.max(0, ph) * 0.03;
+    P.frY = Math.max(0, -ph) * 0.03;
+    P.hY += Math.sign(turn) * 0.25; // the head leads the turn
   }
   const d = (key, target, rate = 10) => {
     c.pose[key] = damp(c.pose[key] ?? target, target, rate, dt);
     return c.pose[key];
   };
+  const fr = walking ? 40 : 12; // feet follow the gait tightly while walking (no lag = no sliding)
   c.upper.rotation.x = d('uX', P.uX, 8);
   c.upper.rotation.y = d('uRY', P.uRY, 10);
+  c.upper.rotation.z = d('uZ', P.uZ, 8);
+  c.upper.position.x = d('uPX', P.uPX, 8);
   c.upper.position.y = d('uY', P.uY, 14) + d('jump', P.jump, 20);
   c.head.rotation.x = d('hX', P.hX, 6);
   c.head.rotation.y = d('hY', P.hY, 4);
@@ -397,8 +543,21 @@ export function animate(c, anim, speed, dt, t) {
   c.armL.rotation.z = d('lZ', P.lZ, 12);
   c.armR.rotation.x = d('rX', P.rX, 12);
   c.armR.rotation.z = d('rZ', P.rZ, 12);
-  c.footL.position.z = d('fl', P.fl, 14);
-  c.footR.position.z = d('fr', P.fr, 14);
+  c.footL.position.z = d('fl', P.fl, fr);
+  c.footR.position.z = d('fr', P.fr, fr);
+  c.footL.position.y = Math.max(0, d('flY', P.flY, fr));
+  c.footR.position.y = Math.max(0, d('frY', P.frY, fr));
+  c.footL.rotation.x = d('flP', P.flP, fr);
+  c.footR.rotation.x = d('frP', P.frP, fr);
+}
+
+// Heading helper for agents: remembers the turn rate so idle characters step into their turns.
+export function setHeading(c, heading, dt) {
+  const prev = c.lastHeading ?? heading;
+  const dh = Math.atan2(Math.sin(heading - prev), Math.cos(heading - prev));
+  c.turnRate = dt > 0 ? dh / dt : 0;
+  c.lastHeading = heading;
+  c.root.rotation.y = heading;
 }
 
 // =====================================================================
@@ -533,9 +692,11 @@ export class Visitor {
       anim = this.override.anim;
       if (this.override.t <= 0) this.override = null;
     }
-    animate(this.c, anim, this.speed, dt, t);
+    const vNow = Math.hypot(this.vel.x, this.vel.z);
+    if (anim === 'walk' && vNow < 0.12) anim = 'idle';
+    animate(this.c, anim, anim === 'walk' ? vNow : this.speed, dt, t);
     this.c.root.position.copy(this.pos);
-    this.c.root.rotation.y = this.heading;
+    setHeading(this.c, this.heading, dt);
 
     this.bubbleT -= dt;
     if (this.bubbleT <= 0) this.bubble.visible = false;

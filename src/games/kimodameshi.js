@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { KIMO_PATH, L } from '../layout.js';
 import { SpiritPatrol } from './spirits.js';
-import { CourageChallenge } from './courage.js';
+import { CursedBell } from './cursedbell.js';
 import { G } from '../state.js';
 import { sfx } from '../audio.js';
 import { canvasTexture, damp, glowTexture, rand, signTexture } from '../util.js';
@@ -157,7 +157,7 @@ export class Kimodameshi {
     // Patrolling onibi with vision cones: being seen sends the player back to the last checkpoint.
     this.spiritPatrol = new SpiritPatrol(ctx, this.curve);
     // The Test of Courage challenge ("The Three Mystical Seals").
-    this.courage = new CourageChallenge(ctx, this);
+    this.courage = new CursedBell(ctx, this); // Test of Courage: break three curses, ring the bell, escape
     for (const seal of this.seals) seal.g.visible = false;
   }
 

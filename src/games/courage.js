@@ -13,7 +13,7 @@ import { makeCharacter, animate } from '../npc.js';
 //     patrol -> investigate -> chase -> return, pathfinding around trees on a walkable grid;
 //   * a fear meter rises when spotted / chased / caught and recovers when safe (100% = fail);
 //   * collect all three, then escape to the shrine-side exit before the timer runs out.
-const DIFF = {
+export const DIFF = {
   easy: { label: 'Easy', time: 240, detect: 0.6, chase: 2.2, range: 6, wander: 4, watch: 2, giveUp: 2, hint: 26, mult: 0.8, gate: 75, fuel: 0.6 },
   normal: { label: 'Normal', time: 180, detect: 1, chase: 2.6, range: 7, wander: 5, watch: 3, giveUp: 3, hint: 14, mult: 1, gate: 55, fuel: 0.9 },
   hard: { label: 'Hard', time: 130, detect: 1.45, chase: 3.0, range: 8, wander: 6, watch: 3, giveUp: 4, hint: 7, mult: 1.3, gate: 40, fuel: 1.2 },
@@ -369,7 +369,7 @@ export class CourageChallenge {
     this.spirits = [];
     // Trial 1 — two light-drawn wanderers patrol the first stretch of the path.
     // Fewer, purposeful spirits: Trial 1 has one light-drawn wanderer on Easy, two otherwise.
-    const t1 = this.diff === 'easy' ? [[0.12, 0.3]] : [[0.08, 0.19], [0.2, 0.32]];
+    const t1 = this.diff === 'easy' || this.mode === 'cursed' ? [[0.12, 0.3]] : [[0.08, 0.19], [0.2, 0.32]];
     for (const [a, b] of t1) this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(a).setY(0), 0, a, b), { trial: 1 }));
     // Kodama are forest spirits, not enemies: one guide watches over the true shrine of trial 1,
     // two act as alarms at choke points (trials 2 and 3); the rest stay hidden during the challenge.
@@ -405,9 +405,9 @@ export class CourageChallenge {
       this.guard = g;
     }
     // Trial 2's stalker: the big imp roams the guardian's stretch of path.
-    this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(0.4).setY(0), 0, 0.38, 0.6, 'guardian'), { trial: 2 }));
+    if (this.mode !== 'cursed' || this.diff !== 'easy') this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(0.4).setY(0), 0, 0.38, 0.6, 'guardian'), { trial: 2 }));
     // Trial 3's sentinel: a tengu mask flies back and forth between the safe lanterns.
-    this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(0.84).setY(0), 0, 0.84, 0.9, 'tengu'), { trial: 3 }));
+    if (this.mode !== 'cursed' || this.diff === 'hard') this.spirits.push(Object.assign(this.makeSpirit('wander', this.curve.getPointAt(0.84).setY(0), 0, 0.84, 0.9, 'tengu'), { trial: 3 }));
     // Trial 3 — the Rokurokubi and her seal; safe lanterns on the escape route.
     this.spawnHunter();
     this.buildSafeZones();
@@ -447,7 +447,7 @@ export class CourageChallenge {
   }
 
   // Reed clumps to hide in: along trial 1, around the guardian's seal, and on the escape route.
-  buildHides() {
+  buildHides(custom) {
     this.hides = [];
     const spots = [];
     const near = (center, rMin, rMax) => {
@@ -468,7 +468,8 @@ export class CourageChallenge {
       }
       return null;
     };
-    for (const q of [pathPt(0.17, 2), pathPt(0.27, 2), near(this.seals[1].pos, 4, 7), near(this.seals[1].pos, 5, 8), pathPt(0.78, 2), pathPt(0.87, 2), near(this.seals[2].pos, 4, 7)]) if (q) spots.push(q);
+    const cands = custom ? custom.map(([t, side]) => pathPt(t, side)) : [pathPt(0.17, 2), pathPt(0.27, 2), near(this.seals[1].pos, 4, 7), near(this.seals[1].pos, 5, 8), pathPt(0.78, 2), pathPt(0.87, 2), near(this.seals[2].pos, 4, 7)];
+    for (const q of cands) if (q) spots.push(q);
     const reedMat = new THREE.MeshStandardMaterial({ color: '#4a5a2a', roughness: 1 });
     const tipMat = new THREE.MeshStandardMaterial({ color: '#8a7a4a', roughness: 1 });
     for (const pos of spots) {
@@ -596,11 +597,16 @@ export class CourageChallenge {
       g.rotation.y = Math.atan2(tan.x, tan.z);
       L.add(g);
     };
-    gate(0.035, '一');
-    gate(0.37, '二');
-    gate(0.63, '三');
+    if (this.mode === 'escape') {
+      gate(0.035, '入');
+      gate(0.965, '出');
+    } else {
+      gate(0.035, '一');
+      gate(0.37, '二');
+      gate(0.63, '三');
+    }
     // Seal shrines: a small ruined hokora at seals 1 and 2, reached by stepping stones from the path.
-    const shrineSites = [...(this.shrines || []).map((x) => ({ pos: x.pos })), { pos: this.seals[1].pos }];
+    const shrineSites = this.mode === 'escape' ? [] : [...(this.shrines || []).map((x) => ({ pos: x.pos })), { pos: this.seals[1].pos }];
     for (const seal of shrineSites) {
       const sh = new THREE.Group();
       const base = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 0.7), stone);
@@ -628,7 +634,7 @@ export class CourageChallenge {
     }
     // Sacred marks: glowing kanji on the ground from the path to the true shrine — visible only in lantern light.
     this.marks = [];
-    if (this.trueShrine) {
+    if (this.trueShrine && this.mode !== 'escape') {
       const tex = canvasTexture(64, 64, (c, w, h) => {
         c.clearRect(0, 0, w, h);
         c.fillStyle = '#bfe8ff';
@@ -705,9 +711,9 @@ export class CourageChallenge {
   // The Rokurokubi: a pale woman waiting beside a stone lantern deep in the forest. When she notices the
   // player her neck stretches and she hunts them by sight, sound and last known position. After the
   // third seal she turns aggressive and senses the player wherever they are.
-  spawnHunter() {
+  spawnHunter(ts = [0.72, 0.7, 0.74, 0.68, 0.76]) {
     let post = null;
-    for (const t of [0.72, 0.7, 0.74, 0.68, 0.76]) {
+    for (const t of ts) {
       const p = this.curve.getPointAt(t);
       const tan = this.curve.getTangentAt(t);
       for (const side of [3.5, -3.5, 4.5, -4.5]) {
@@ -780,10 +786,12 @@ export class CourageChallenge {
       this.props.push(lan);
     }
     this.hunterLight = this.ctx.world.addLight(new THREE.Vector3(post.q.x + 0.9, 1, post.q.z + 0.6), { color: 0xffb070, base: 4, distance: 8, flicker: 0.4 });
-    // The third seal rests at her lantern, just in front of her: she must be approached unseen.
-    const sealPos = new THREE.Vector3(post.q.x + 0.9, 0, post.q.z - 0.8);
-    this.seals[2].pos.copy(this.isFree(sealPos, 0.3) ? sealPos : post.q.clone().add(new THREE.Vector3(0, 0, 1.2)));
-    this.seals[2].g.position.copy(this.seals[2].pos);
+    if (this.mode !== 'escape') {
+      // The third seal rests at her lantern, just in front of her: she must be approached unseen.
+      const sealPos = new THREE.Vector3(post.q.x + 0.9, 0, post.q.z - 0.8);
+      this.seals[2].pos.copy(this.isFree(sealPos, 0.3) ? sealPos : post.q.clone().add(new THREE.Vector3(0, 0, 1.2)));
+      this.seals[2].g.position.copy(this.seals[2].pos);
+    }
     this.spirits.push(s);
     this.hunter = s;
   }
@@ -840,6 +848,7 @@ export class CourageChallenge {
 
   // Player tools: the hand lantern (L) and pebbles to throw (Q).
   key(code) {
+    if (code === 'KeyX' && this.running) return this.giveUp?.();
     if (!this.running) return;
     if (code === 'KeyL') {
       this.lanternOn = !this.lanternOn && this.fuel > 0;
@@ -1042,7 +1051,7 @@ export class CourageChallenge {
     this.ctx.ui.complete(
       `<div class="dlg-role">Test of Courage · ${this.d.label}</div><h2 class="fin">Rank ${s.rank} — ${s.title}</h2>
        <p>Score <b>${s.total}</b>${bestText}</p>
-       <p class="muted">Completion ${s.base} · time ${Math.round(this.timer)}s (+${s.time}) · faints ${this.faints} · seals +${s.seals} · spotted ${this.spotted}× (−${s.spot}) · caught ${this.caught}× (−${s.catch}) · fear ${Math.round(this.fear)}% (−${s.fearP}) · ×${this.d.mult} difficulty</p>`,
+       <p class="muted">Completion ${s.base} · time ${Math.round(this.timer)}s (+${s.time}) · faints ${this.faints} · ${this.mode === 'cursed' ? 'curses' : 'seals'} +${s.seals} · spotted ${this.spotted}× (−${s.spot}) · caught ${this.caught}× (−${s.catch}) · fear ${Math.round(this.fear)}% (−${s.fearP}) · ×${this.d.mult} difficulty</p>`,
       [['Retry', retry], ['Return to the festival', leave]],
     );
   }
@@ -1070,6 +1079,13 @@ export class CourageChallenge {
 
   cleanupExtras() {
     stopHorror();
+    // No forest ghost may follow the player out: stop any jump-scare / wisp effect still in flight.
+    this.kimo.anim = null;
+    if (this.kimo.ghost) this.kimo.ghost.visible = false;
+    this.kimo.wispT = 0;
+    this.kimo.wisps?.forEach((w) => (w.visible = false));
+    this.kimo.flicker = 0;
+    document.body.classList.remove('ward');
     if (this.level) {
       this.ctx.world.scene.remove(this.level);
       this.level = null;
@@ -1293,7 +1309,7 @@ export class CourageChallenge {
 
     // Exit
     if (zone) this.lastSafe = zone;
-    if (this.found === 3) {
+    if (this.found === 3 && !this.bellPending) {
       this.exitBeacon.material.opacity = 0.6 + Math.sin(t * 3) * 0.25;
       for (const z of this.safe) {
         z.ring.material.opacity = 0.55 + Math.sin(t * 4) * 0.25;
@@ -1314,7 +1330,7 @@ export class CourageChallenge {
   // ending the run; spirits calm down and return to their territories.
   faint(reason) {
     this.faints++;
-    if (this.faints >= 3) return this.end(false, reason); // three times overwhelmed: the run is lost
+    if (this.faints >= (this.maxFaints || 3)) return this.end(false, reason); // three times overwhelmed: the run is lost
     this.fear = 35;
     this.hidden = null;
     this.ritual = null;
@@ -1333,7 +1349,7 @@ export class CourageChallenge {
       // The escape restarts: she returns to her lantern, the gate opens again.
       this.hunter.pos.copy(this.hunter.home);
       this.hunter.stun = 3;
-      this.gate = this.d.gate + 15;
+      this.gate = this.mode === 'cursed' ? null : this.d.gate + 15;
     }
     sfx.scare();
     this.ctx.ui.toast(reason === 'gate' ? 'The gate sealed itself… you wake by her lantern. Try the escape again.' : 'Terror overwhelms you… you come to at the last shrine.');
@@ -1448,7 +1464,7 @@ export class CourageChallenge {
       const inCone = d < R && (Math.sin(s.heading) * dx + Math.cos(s.heading) * dz) / (d || 1) > s.fovCos;
       s.realSeen = s.stun <= 0 && inCone && this.clear(s.pos.x, s.pos.z, P.pos.x, P.pos.z); // true line of sight right now
       s.seen = s.realSeen && (!this.hidden || this.hideSeen);
-      s.heard = s.stun <= 0 && !this.hidden && P.running && P.vel.length() > 1 && d < 5;
+      s.heard = s.stun <= 0 && !this.hidden && P.running && P.vel.length() > 1 && d < (s.hearR || 5);
       if (this.ward > 0) {
         s.seen = s.seen && d < 2;
         s.heard = false;
@@ -1465,7 +1481,23 @@ export class CourageChallenge {
       s.state = 'chase';
       s.seen = true;
       const z = this.inSafe(P.pos);
-      if (this.hidden && !this.hideSeen) {
+      const knows = this.mode !== 'cursed' || (s.realSeen && (!this.hidden || this.hideSeen)) || s.heard || d < 3;
+      if (this.mode === 'cursed' && !knows && !z && !(this.hidden && !this.hideSeen)) {
+        // Lost sight of you: she keeps momentum for a moment, then sweeps around where she last saw you,
+        // drifting her guesses only roughly toward you — breaking line of sight genuinely buys time.
+        s.seen = false;
+        s.lostKnow = (s.lostKnow || 0) + dt;
+        s.searchT = (s.searchT || 0) - dt;
+        if (s.lostKnow < 1.2) s.target = P.pos.clone();
+        else if (s.searchT <= 0 || !s.target || s.pos.distanceTo(s.target) < 1) {
+          s.searchT = 3;
+          const a = Math.random() * Math.PI * 2;
+          const base = (s.lastSeenPos || P.pos).clone().lerp(P.pos, 0.35);
+          s.target = this.clampToForest(base.add(new THREE.Vector3(Math.cos(a) * 5, 0, Math.sin(a) * 5)));
+          s.route = this.path(s.pos, s.target);
+        }
+        s.searching = true;
+      } else if (this.hidden && !this.hideSeen) {
         // Lost you in the reeds: she searches around where she last saw you.
         s.seen = false;
         s.searchT = (s.searchT || 0) - dt;
@@ -1480,7 +1512,13 @@ export class CourageChallenge {
         if (away.lengthSq() < 1e-4) away.set(1, 0, 0);
         away.normalize().multiplyScalar(z.r + 1.2);
         s.target = z.pos.clone().add(away);
-      } else s.target = P.pos.clone();
+      } else {
+        s.target = P.pos.clone();
+        s.lastSeenPos = P.pos.clone();
+        if (s.lostKnow > 1.2) sfx.whisper?.(); // she found you again
+        s.lostKnow = 0;
+        s.searching = false;
+      }
     }
     const gain = this.d.detect * (1 + 0.15 * this.found);
     if (s.seen) s.sus += dt * gain * (0.5 + 1.5 * s.closeness);
@@ -1549,7 +1587,7 @@ export class CourageChallenge {
         sfx.scare();
         this.ctx.ui.toast('A spirit caught you! Fear rises…');
         s.state = 'return';
-        s.stun = s.aggressive ? 1.8 : 4;
+        s.stun = s.aggressive ? (this.diff === 'easy' ? 3 : 1.8) : 4; // a fair head start after a catch
         s.sus = 0;
         s.route = this.path(s.pos, s.home);
         if (s.aggressive) s.state = 'chase';
@@ -1585,7 +1623,7 @@ export class CourageChallenge {
         s.heading = angleDamp(s.heading, s.homeHeading + Math.sin(t * 0.6 + s.home.x) * (s.guard ? 0.45 : 0.9), 2, dt);
       }
     } else {
-      const sp = s.state === 'chase' ? (s.aggressive ? Math.min(3.1, this.d.chase + 0.3) : this.d.chase + (s.kind === 'hunter' ? 0.3 : 0)) : 1.3;
+      const sp = s.state === 'chase' ? (s.aggressive ? Math.min(3.1, this.d.chase + 0.3) : this.d.chase + (s.kind === 'hunter' ? 0.3 : 0) + (s.chaseBonus || 0)) : s.searchSpeed || 1.3;
       const next = s.route[0];
       if (next) {
         const dx = next.x - s.pos.x;

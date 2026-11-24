@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { makeCharacter, animate } from '../npc.js';
+import { makeCharacter, animate, setHeading } from '../npc.js';
 import { angleDamp, textSprite } from '../util.js';
 import { Perception } from './perception.js';
 
@@ -163,14 +163,14 @@ export class Villager {
     this.cheerT = (this.cheerT || 0) - dt;
     if (!moving) this.heading = angleDamp(this.heading, target, this.state === 'idle' && !(this.lookT > 0) ? 1.2 : 5, dt);
     this.c.root.position.copy(this.pos);
-    this.c.root.rotation.y = this.heading;
+    setHeading(this.c, this.heading, dt);
     this.debug.position.copy(this.pos);
     if (this.collider) {
       this.collider.x = this.pos.x;
       this.collider.z = this.pos.z;
     }
-    const anim = this.cheerT > 0 ? 'cheer' : moving ? 'walk' : this.state === 'notice' && this.noticeT < 1.4 ? 'wave' : this.def.anim || 'idle';
-    animate(this.c, anim, moving ? moving * 1.4 : 1, dt, t);
+    const anim = this.cheerT > 0 ? 'cheer' : moving ? 'walk' : this.state === 'notice' && this.noticeT < 1.4 ? 'wave' : this.state === 'notice' || this.state === 'talk' ? 'talk' : this.def.anim || 'idle';
+    animate(this.c, anim, moving || 1, dt, t); // real walking speed → stride-matched feet
 
     this.bubbleT -= dt;
     if (this.bubbleT <= 0) this.bubble.visible = false;
