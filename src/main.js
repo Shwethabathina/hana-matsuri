@@ -506,10 +506,22 @@ function drawForestMinimap(C) {
   mm.beginPath();
   KIMO_PATH.forEach((p, i) => (i ? mm.lineTo(fx(p.x), fz(p.z)) : mm.moveTo(fx(p.x), fz(p.z))));
   mm.stroke();
+  // Red dotted route from the player to the current objective along walkable ground (around trees).
+  if (C.route?.length) {
+    mm.strokeStyle = 'rgba(255,74,58,0.95)';
+    mm.lineWidth = 4;
+    mm.setLineDash([6, 6]);
+    mm.beginPath();
+    mm.moveTo(fx(player.pos.x), fz(player.pos.z));
+    for (const q of C.route) mm.lineTo(fx(q.x), fz(q.z));
+    mm.stroke();
+    mm.setLineDash([]);
+  }
   mm.font = '24px sans-serif';
   mm.textAlign = 'center';
   mm.textBaseline = 'middle';
   for (const m of C.mapMarkers?.() || []) {
+    mm.globalAlpha = m.alpha ?? 1;
     if (m.ring) {
       mm.strokeStyle = 'rgba(255,214,90,0.9)';
       mm.lineWidth = 3;
@@ -519,6 +531,7 @@ function drawForestMinimap(C) {
     }
     mm.fillText(m.icon, fx(m.p.x), fz(m.p.z));
   }
+  mm.globalAlpha = 1;
   drawPlayerArrow(fx(player.pos.x), fz(player.pos.z));
 }
 

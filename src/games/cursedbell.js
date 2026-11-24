@@ -311,6 +311,8 @@ export class CursedBell extends CourageChallenge {
     }
     super.update(dt, t);
     this.updateBeams(t);
+    this.updateGuide(dt);
+    if (this.running && (this.hudT || 0) > 0.1) this.hudT = 0.1; // arrow refresh at 10 Hz
     if (!this.running) return;
     for (const fl of this.shrineFlames || []) fl.material.opacity = (this.phase === 'escape' ? 0.25 : 0.6) + Math.sin(t * 7) * 0.12;
     if (this.phase === 'bell') {
@@ -374,7 +376,88 @@ export class CursedBell extends CourageChallenge {
   }
 
   mapMarkers() {
-    return this.targets().map((x) => ({ ...x, ring: true }));
+    if (!this.running) return [];
+    const cur = new Set(this.targets().map((x) => x.p));
+    const out = [];
+    const st = this.phase === 'curses' ? this.trial : 4; // which stage the player is on (1-3 seals, 4 = bell/escape)
+    // Seal 1 shrines (the true one is not revealed: the lantern marks still have to be read)
+    for (const sh of this.shrines || []) {
+      const done = st > 1 && sh === this.trueShrine;
+      if (st > 1 && !done) continue;
+      out.push({ p: sh.pos, icon: done ? '✅' : '🙏', alpha: sh.used && !done ? 0.35 : 1, ring: cur.has(sh.pos) });
+    }
+    // Seals 2 and 3
+    [1, 2].forEach((i) => {
+      const seal = this.seals[i];
+      if (!seal) return;
+      out.push({ p: seal.pos, icon: seal.taken ? '✅' : '📜', alpha: st < i + 1 ? 0.45 : 1, ring: cur.has(seal.pos) });
+    });
+    // The bell shrine and the two exit gates
+    if (this.bellPos) out.push({ p: this.bellPos, icon: '🔔', alpha: st < 4 ? 0.45 : 1, ring: cur.has(this.bellPos) });
+    out.push({ p: this.entry, icon: '⛩️', alpha: this.phase === 'escape' ? 1 : 0.5, ring: this.phase === 'escape' });
+    out.push({ p: this.exit, icon: '⛩️', alpha: this.phase === 'escape' ? 1 : 0.5, ring: this.phase === 'escape' });
+    return out;
+  }
+
+  // Route guidance (same approach as the Old Town's arrow): a walkable route around trees on the forest
+  // grid, refreshed 4x a second; the red HUD arrow points ~2.5 m ahead along it and shows walking distance.
+  updateGuide(dt) {
+    this.guideT = (this.guideT || 0) - dt;
+    if (this.guideT > 0) return;
+    this.guideT = 0.25;
+    const P = G.player;
+    const tgs = this.targets();
+    if (!tgs.length || this.phase === 'cinematic') {
+      this.route = [];
+      this.guide = null;
+      return;
+    }
+    let best = null;
+    for (const tg of tgs) {
+      const r = this.path(P.pos, tg.p, 30000);
+      let walk = 0;
+      let px = P.pos.x;
+      let pz = P.pos.z;
+      for (const q of r) {
+        walk += Math.hypot(q.x - px, q.z - pz);
+        px = q.x;
+        pz = q.z;
+      }
+      walk += Math.hypot(tg.p.x - px, tg.p.z - pz);
+      if (!best || walk < best.walk) best = { tg, r, walk };
+    }
+    this.route = best.r;
+    this.guide = best;
+  }
+
+  guideArrow() {
+    const g = this.guide;
+    if (!g) return '';
+    const P = G.player;
+    let wx = g.tg.p.x;
+    let wz = g.tg.p.z;
+    let acc = 0;
+    let px = P.pos.x;
+    let pz = P.pos.z;
+    for (const q of this.route || []) {
+      acc += Math.hypot(q.x - px, q.z - pz);
+      px = q.x;
+      pz = q.z;
+      if (acc >= 2.5) {
+        wx = q.x;
+        wz = q.z;
+        break;
+      }
+    }
+    const f = P.forward;
+    const wd = Math.hypot(wx - P.pos.x, wz - P.pos.z) || 1;
+    const dx = (wx - P.pos.x) / wd;
+    const dz = (wz - P.pos.z) / wd;
+    const deg = Math.round((Math.atan2(f.x * dz - f.z * dx, f.x * dx + f.z * dz) * 180) / Math.PI);
+    const near = Math.hypot(g.tg.p.x - P.pos.x, g.tg.p.z - P.pos.z) < 2.5;
+    return near
+      ? `<b style="color:#ffd24a">${g.tg.icon} here — press E</b>`
+      : `<span style="display:inline-block;transform:rotate(${deg}deg);color:#ff4a3a;font-size:19px;transition:transform 0.1s linear">⬆</span> ${g.tg.icon} ${Math.round(g.walk)} m`;
   }
 
   updateBeams(t) {
@@ -397,13 +480,8 @@ export class CursedBell extends CourageChallenge {
     else if (this.hidden) warn = this.hideSeen ? 'it saw you hide!' : 'hidden in the reeds';
     else if (this.spirits.some((x) => x.state === 'chase')) warn = 'a spirit is chasing you!';
     // Direction to the nearest objective, relative to where the player is looking.
-    let dir = '';
-    const tg = this.targets().sort((a, b) => a.p.distanceTo(P.pos) - b.p.distanceTo(P.pos))[0];
-    if (tg) {
-      const rel = Math.atan2(-(tg.p.x - P.pos.x), -(tg.p.z - P.pos.z)) - P.yaw;
-      const d = Math.round(Math.hypot(tg.p.x - P.pos.x, tg.p.z - P.pos.z));
-      dir = `<span style="display:inline-block;transform:rotate(${(-rel * 180) / Math.PI}deg);color:#ffd24a">▲</span> ${tg.icon} ${d} m`;
-    }
+    void P;
+    const dir = this.guideArrow();
     const ritual = this.ritual ? `<div style="color:#ffd24a"><b>Ritual ${this.ritual.t.toFixed(1)} / ${this.ritual.dur}s</b> — stay close and unseen</div>` : '';
     const progress = this.phase === 'escape' ? 'Bell rung' : `Seals <b>${this.found} / 3</b>`;
     this.ctx.ui.gameHud(`<div class="gh-title">${this.trialText?.[0] || 'The Cursed Bell'} <span style="float:right;font-weight:400">${dir}</span></div>
