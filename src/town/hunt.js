@@ -129,7 +129,7 @@ export class TreasureHunt {
       },
     });
     this.world.interactables.push({
-      id: 'tanuki', pos: this.tanuki.pos, radius: 1.5, priority: true,
+      id: 'tanuki', pos: this.tanuki.pos, radius: 2.4, priority: true,
       label: 'Grab the tanuki', enabled: () => inTown() && !this.struggle && Q.state === S.FIND_TANUKI && this.tanuki.canBeCaught,
       action: () => this.startStruggle(),
     });
@@ -185,7 +185,7 @@ export class TreasureHunt {
     this.player.shake = 0.15;
     this.player.enabled = false;
     this.tanuki.hold();
-    this.struggle = { hits: 0, misses: 0, t: 0, ready: 1.1, phase: -Math.PI / 2, speed: 2.0, zone: 0.36, center: 0.5 + (Math.random() - 0.5) * 0.4, time: 10, fb: '', fbT: 0 };
+    this.struggle = { hits: 0, misses: 0, t: 0, ready: 1.6, phase: -Math.PI / 2, speed: 1.5, zone: 0.5, center: 0.5 + (Math.random() - 0.5) * 0.3, time: 16, fb: '', fbT: 0 };
     this.duelEl = this.duelEl || Object.assign(document.createElement('div'), { id: 'duel' });
     if (!this.duelEl.parentNode) document.body.appendChild(this.duelEl);
     this.duelEl.classList.add('on');
@@ -227,14 +227,14 @@ export class TreasureHunt {
         s.done = 0.6; // let the success register before the bell drops
         return;
       }
-      s.zone *= 0.75; // tighter
-      s.speed *= 1.3; // faster
-      s.center = 0.18 + Math.random() * 0.64;
+      s.zone *= 0.85; // a little tighter
+      s.speed *= 1.15; // a little faster
+      s.center = 0.25 + Math.random() * 0.5;
     } else {
       s.misses++;
       sfx.fail?.();
-      this.duelFx('miss', s.misses >= 2 ? 'It slipped away!' : 'Slipped! One more and it escapes', '#ff6a5a');
-      if (s.misses >= 2) s.lost = 0.6;
+      this.duelFx('miss', s.misses >= 3 ? 'It slipped away!' : s.misses === 2 ? 'Slipped! One more and it escapes' : 'Slipped! Wait for the gold zone', '#ff6a5a');
+      if (s.misses >= 3) s.lost = 0.6;
     }
   }
 
@@ -267,8 +267,8 @@ export class TreasureHunt {
       return this.endStruggle(false);
     }
     const m = this.markerPos();
-    const pips = [0, 1, 2].map((i) => `<span class="${i < s.hits ? 'on' : 'off'}">●</span>`).join('') + '&nbsp;&nbsp;' + [0, 1].map((i) => `<span class="${i < s.misses ? 'x' : 'off'}">✕</span>`).join('');
-    const sub = s.t < s.ready ? 'Get ready… press <b>SPACE</b> when the white marker is inside the gold zone' : `Press <b>SPACE</b> in the gold zone · ${Math.ceil(s.time)}s · the zone shrinks with every grip`;
+    const pips = [0, 1, 2].map((i) => `<span class="${i < s.hits ? 'on' : 'off'}">●</span>`).join('') + '&nbsp;&nbsp;' + [0, 1, 2].map((i) => `<span class="${i < s.misses ? 'x' : 'off'}">✕</span>`).join('');
+    const sub = s.t < s.ready ? 'Get ready… press <b>SPACE</b> when the white marker is inside the gold zone' : `Press <b>SPACE</b> when the marker is in the gold zone · 3 grips win · 3 slips and it escapes · ${Math.ceil(s.time)}s`;
     this.duelEl.innerHTML = `<div class="dt">${s.t < s.ready ? 'You grabbed the thief!' : 'Hold on!'}</div><div class="ds">${sub}</div>
       <div class="track"><div class="zone" style="left:${(s.center - s.zone / 2) * 100}%;width:${s.zone * 100}%"></div><div class="marker" style="left:${m * 100}%"></div></div>
       <div class="pips">${pips}</div><div class="fb" style="opacity:${s.fbT > 0 ? 1 : 0}">${s.fb}</div>`;
@@ -622,7 +622,7 @@ export class TreasureHunt {
       this.noteT = (this.noteT || 0) - dt;
       if (this.noteT <= 0) {
         this.noteT = 0.25;
-        const hint = this.struggle ? 'Hold on!' : this.tanuki.state === 'flee' ? 'It saw you — let it settle down' : d < 4 ? 'The jingling is right here' : d < 9 ? 'The jingle is close' : d < 20 ? 'A faint jingle somewhere nearby' : 'Search the town and listen';
+        const hint = this.struggle ? 'Hold on!' : this.tanuki.state === 'flee' ? 'It saw you — let it settle down' : d < 2.4 ? 'Right next to you — press E to grab it!' : d < 4 ? 'The jingling is right here — crouch (C) and creep closer' : d < 9 ? 'The jingle is close' : d < 20 ? 'A faint jingle somewhere nearby' : 'Search the town and listen';
         this.ui.questNote(`${hint}${p.crouch > 0.5 ? ' · crouching' : ''}`);
       }
     }

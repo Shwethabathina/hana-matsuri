@@ -16,9 +16,9 @@ const SPOTS = [
   [-4.8, 2.3], // west alley
   [1.7, -8.8], // middle of the north path
 ];
-const SIGHT = 6; // m, standing player
-const FOV = 120; // tanuki see a wide arc in front, nothing behind
-const HEAR_RUN = 6; // m
+const SIGHT = 5; // m, standing player
+const FOV = 100; // tanuki see an arc in front, nothing behind
+const HEAR_RUN = 5; // m — only RUNNING footsteps are heard; walking and crouching are silent
 
 export class Tanuki {
   constructor(town, hooks = {}) {
@@ -160,7 +160,7 @@ export class Tanuki {
 
   sense(player) {
     // Stance changes how far it can spot the player: crouching halves the range, running extends it.
-    const k = 1 - 0.6 * player.crouch + (player.running ? 0.3 : 0);
+    const k = 1 - 0.75 * player.crouch + (player.running ? 0.3 : 0);
     this.perception.range = SIGHT * k;
     const r = this.perception.sense(this.pos, this.heading, player.pos, 1.6 - player.crouch * 0.6);
     const moving = player.vel.length() > 0.5;
@@ -205,8 +205,8 @@ export class Tanuki {
       }
       const d = this.last ? this.last.dist : 99;
       if (this.state !== 'flee') {
-        if (this.heard) this.suspicion = 1;
-        else if (this.seen) this.suspicion += dt * (0.55 + 1.6 * Math.max(0, 1 - d / this.perception.range)) * (this.escapes >= 3 ? 0.6 : 1);
+        if (this.heard) this.suspicion = d < 3 ? 1 : Math.max(this.suspicion, 0.6);
+        else if (this.seen) this.suspicion += dt * (0.4 + 1.0 * Math.max(0, 1 - d / this.perception.range)) * (player.crouch > 0.5 ? 0.5 : 1) * (this.escapes >= 2 ? 0.6 : 1);
         else this.suspicion = Math.max(0, this.suspicion - dt * 0.35);
         if (this.suspicion >= 1) {
           this.state = 'flee';
