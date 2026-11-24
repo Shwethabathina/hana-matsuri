@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { makeCharacter, animate } from '../npc.js';
+import { ASSETS } from '../spiritAssets.js';
 import { angleDamp, textSprite } from '../util.js';
 import { Perception } from './perception.js';
 
@@ -28,7 +29,15 @@ export class Villager {
     this.senseT = Math.random() * 0.1; // stagger raycasts between villagers
     this.result = null;
     this.stats = { senses: 0, radiusHits: 0, fovLosHits: 0, falsePositivesAvoided: 0 };
-    this.c = makeCharacter({ gender: def.gender, yukata: def.yukata, obi: def.obi, child: def.child });
+    // A detailed kimono model for some villagers (static mesh: she stands at her post, breathes and turns);
+    // everyone else keeps the animated procedural character.
+    const model = def.model && ASSETS[def.model];
+    if (model) {
+      const root = new THREE.Group();
+      const body = model.scene.clone(true);
+      root.add(body);
+      this.c = { root, body, static: true };
+    } else this.c = makeCharacter({ gender: def.gender, yukata: def.yukata, obi: def.obi, child: def.child });
     this.c.root.position.copy(this.pos);
     this.c.root.rotation.y = this.heading;
     town.root.parent.add(this.c.root);
@@ -155,7 +164,7 @@ export class Villager {
     this.noticeT += dt;
 
     // Idle villagers follow their patrol; noticing the player (or talking) stops them.
-    const moving = this.state === 'idle' && !(this.lookT > 0) ? this.patrolStep(dt) : 0;
+    const moving = this.state === 'idle' && !(this.lookT > 0) && !this.c.static ? this.patrolStep(dt) : 0;
     let target = this.baseHeading + Math.sin(t * 0.35 + this.phase) * this.scan;
     if (this.state !== 'idle') target = Math.atan2(player.pos.x - this.pos.x, player.pos.z - this.pos.z);
     else if (this.lookT > 0) target = Math.atan2(this.lookAt.x - this.pos.x, this.lookAt.z - this.pos.z);
@@ -170,7 +179,14 @@ export class Villager {
       this.collider.z = this.pos.z;
     }
     const anim = this.cheerT > 0 ? 'cheer' : moving ? 'walk' : this.state === 'notice' && this.noticeT < 1.4 ? 'wave' : this.def.anim || 'idle';
-    animate(this.c, anim, moving ? moving * 1.4 : 1, dt, t);
+    if (this.c.static) {
+      // Idle life for the static model: slow breathing and a gentle weight shift; a small bob when waving/cheering.
+      const b = this.c.body;
+      b.rotation.z = Math.sin(t * 0.5 + this.phase) * 0.012;
+      b.rotation.x = Math.sin(t * 0.9 + this.phase) * 0.006;
+      b.scale.y = 1 + Math.sin(t * 1.7 + this.phase) * 0.004;
+      b.position.y = anim === 'cheer' ? Math.abs(Math.sin(t * 7)) * 0.05 : anim === 'wave' || anim === 'talk' ? Math.abs(Math.sin(t * 3)) * 0.015 : 0;
+    } else animate(this.c, anim, moving ? moving * 1.4 : 1, dt, t);
 
     this.bubbleT -= dt;
     if (this.bubbleT <= 0) this.bubble.visible = false;

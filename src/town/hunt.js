@@ -18,7 +18,7 @@ import { sfx } from '../audio.js';
 const VILLAGERS = [
   {
     key: 'organizer', name: 'Hanae Sato', role: 'Festival organizer', at: [-1.6, 2.4], heading: 1.1, scan: 0.5,
-    gender: 'f', yukata: ['#2d4a8a', '#f4e7c8'], obi: '#f2c14e', greet: 'Excuse me — could you help me?',
+    gender: 'f', yukata: ['#2d4a8a', '#f4e7c8'], obi: '#f2c14e', greet: 'Excuse me — could you help me?', model: 'kimonoWoman',
     patrol: [[-1.6, 2.4], [-0.3, 0.6]], speed: 0.6,
   },
   {
@@ -37,7 +37,7 @@ const VILLAGERS = [
   },
   {
     key: 'aiko', name: 'Aiko', role: 'Lantern maker', at: [-4.6, 2.2], heading: Math.PI / 2, scan: 0.6,
-    gender: 'f', yukata: ['#6a2d3a', '#f2c6a0'], obi: '#d4a02a', greet: 'Mind the lanterns, they’re still drying.',
+    gender: 'f', yukata: ['#6a2d3a', '#f2c6a0'], obi: '#d4a02a', greet: 'Mind the lanterns, they’re still drying.', model: 'floralGeisha',
     patrol: [[-4.6, 2.2], [-3.2, -4.6], [0.4, -3.0]], speed: 0.75,
   },
 ];

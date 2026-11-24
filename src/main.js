@@ -574,6 +574,7 @@ function drawMinimap(npcs) {
 
 // ---------------------------------------------------------------- boot
 let started = false;
+const standees = []; // static kimono models standing in the festival
 let npcs = null;
 let kimo = null;
 let hunt = null;
@@ -615,6 +616,20 @@ async function boot() {
   });
 
   // Everything that blocks movement is registered: rasterise the nav grid.
+  // Two kimono-clad festival-goers standing by the torii and at the fireworks viewing spot (static models;
+  // solid, so visitors path around them and the player cannot walk through them).
+  for (const [key, x, z, face] of [['floralGeisha', 35.8, 3.2, Math.PI], ['kimonoWoman', 33.4, 6.4, Math.PI * 0.75]]) {
+    const m = ctx.spirits?.[key];
+    if (!m) continue;
+    const root = new THREE.Group();
+    const body = m.scene.clone(true);
+    root.add(body);
+    root.position.set(x, 0, z);
+    root.rotation.y = face;
+    world.scene.add(root);
+    world.colliders.addCircle(x, z, 0.35, 'standee');
+    standees.push({ root, body, face, heading: face, phase: Math.random() * 6 });
+  }
   const nav = new NavGrid(world.colliders, { minX: WORLD_BOUNDS.minX, maxX: 52, minZ: -14, maxZ: WORLD_BOUNDS.maxZ, cell: 0.5, agentRadius: 0.4 });
   navDebug = nav.debugMesh();
   navDebug.visible = false;
@@ -868,6 +883,15 @@ function frame() {
   if (npcs && mmT <= 0) {
     mmT = 0.1;
     drawMinimap(npcs);
+  }
+  // Standing festival-goers: breathe, sway, and turn to look at the player when they come close.
+  for (const s of standees) {
+    const dx = player.pos.x - s.root.position.x, dz = player.pos.z - s.root.position.z;
+    const want = dx * dx + dz * dz < 16 ? Math.atan2(dx, dz) : s.face;
+    s.heading += Math.atan2(Math.sin(want - s.heading), Math.cos(want - s.heading)) * (1 - Math.exp(-2.5 * dt));
+    s.root.rotation.y = s.heading;
+    s.body.rotation.z = Math.sin(elapsed * 0.5 + s.phase) * 0.012;
+    s.body.scale.y = 1 + Math.sin(elapsed * 1.7 + s.phase) * 0.004;
   }
 
   // Adaptive resolution: drop render scale when the frame rate sags, restore it when smooth.

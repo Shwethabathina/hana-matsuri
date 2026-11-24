@@ -17,7 +17,12 @@ const FILES = {
   lantern: ['models/spirits/lantern.glb', 1.4, 0],
   tengu: ['models/spirits/spirit5.glb', 0.9, 0.5], // red tengu mask (flying sentinel)
   geisha: ['models/spirits/spirit7.glb', 1.7, 0.2], // the Rokurokubi's body
+  // Human festival-goers (static, unrigged Sketchfab models, CC-BY 4.0 — credited in the page footer):
+  kimonoWoman: ['models/humans/kimono.glb', 1.6, 0], // "Japanese Kimono V1" by Fadly.W
+  floralGeisha: ['models/humans/geisha.glb', 1.62, 0], // "geisha in a satin floral kimono" by alicean
 };
+// Shared registry so other modules (Old Town villagers) can use the loaded models.
+export const ASSETS = {};
 
 // Scale to a target height, stand on y = 0, centre on x/z, and drop helper geometry
 // (Sketchfab backdrop planes and flat shadow discs).
@@ -69,6 +74,7 @@ export async function loadSpiritAssets() {
       try {
         const g = await loader.loadAsync(url);
         out[key] = { scene: normalise(g.scene, h, glow), animations: g.animations };
+        ASSETS[key] = out[key];
       } catch (err) {
         console.warn(`Spirit model ${key} failed to load`, err);
       }
