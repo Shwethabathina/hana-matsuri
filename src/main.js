@@ -471,7 +471,65 @@ function drawPlayerArrow(px, py) {
   mm.restore();
 }
 
+// Test of Courage: a zoomed forest map — forest area, the trail, the player, and the current objective(s).
+let forestBox = null;
+function drawForestMinimap(C) {
+  if (!forestBox) {
+    let a = 1e9, b = -1e9, c = 1e9, d = -1e9;
+    for (const p of KIMO_PATH) {
+      a = Math.min(a, p.x); b = Math.max(b, p.x); c = Math.min(c, p.z); d = Math.max(d, p.z);
+    }
+    const cx = (a + b) / 2, cz = (c + d) / 2, half = Math.max(b - a, d - c) / 2 + 7;
+    forestBox = { minX: cx - half, minZ: cz - half, s: 388 / (half * 2) };
+  }
+  const B = forestBox;
+  const fx = (x) => (x - B.minX) * B.s;
+  const fz = (z) => (z - B.minZ) * B.s;
+  mm.fillStyle = '#0d140f';
+  mm.fillRect(0, 0, 388, 388);
+  // Walkable forest (the challenge's flood-filled grid), rasterised once into an offscreen canvas.
+  if (C.grid && C.reach && !B.img) {
+    const g = C.grid, cell = 0.5;
+    B.img = document.createElement('canvas');
+    B.img.width = B.img.height = 388;
+    const o = B.img.getContext('2d');
+    o.fillStyle = '#1d2d1d';
+    const cs = cell * B.s + 0.6;
+    for (let i = 0; i < g.w * g.h; i++) {
+      if (!C.reach[i] || !g.free[i]) continue;
+      o.fillRect(fx(g.minX + (i % g.w) * cell), fz(g.minZ + Math.floor(i / g.w) * cell), cs, cs);
+    }
+  }
+  if (B.img) mm.drawImage(B.img, 0, 0);
+  mm.strokeStyle = '#8a7656';
+  mm.lineWidth = 6;
+  mm.beginPath();
+  KIMO_PATH.forEach((p, i) => (i ? mm.lineTo(fx(p.x), fz(p.z)) : mm.moveTo(fx(p.x), fz(p.z))));
+  mm.stroke();
+  mm.font = '24px sans-serif';
+  mm.textAlign = 'center';
+  mm.textBaseline = 'middle';
+  for (const m of C.mapMarkers?.() || []) {
+    if (m.ring) {
+      mm.strokeStyle = 'rgba(255,214,90,0.9)';
+      mm.lineWidth = 3;
+      mm.beginPath();
+      mm.arc(fx(m.p.x), fz(m.p.z), 15 + Math.sin(performance.now() / 250) * 3, 0, 7);
+      mm.stroke();
+    }
+    mm.fillText(m.icon, fx(m.p.x), fz(m.p.z));
+  }
+  drawPlayerArrow(fx(player.pos.x), fz(player.pos.z));
+}
+
 function drawMinimap(npcs) {
+  const C = kimo?.courage;
+  const nm = document.getElementById('mapname');
+  if (C?.running) {
+    if (nm.textContent !== 'Haunted forest') nm.textContent = 'Haunted forest';
+    return drawForestMinimap(C);
+  }
+  if (nm.textContent === 'Haunted forest') nm.textContent = hunt?.area === 'town' ? 'Old Town' : 'Festival street';
   if (hunt?.area === 'town') return drawTownMinimap();
   mm.fillStyle = '#1c2a1c';
   mm.fillRect(0, 0, 388, 388);

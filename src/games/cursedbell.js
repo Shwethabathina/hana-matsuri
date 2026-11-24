@@ -34,11 +34,19 @@ export class CursedBell extends CourageChallenge {
     this.entryBeacon.position.copy(this.entry).setY(2);
     this.entryBeacon.visible = false;
     ctx.world.scene.add(this.entryBeacon);
+    // Gold light beams over the current objective(s): seen through the trees from far away.
+    this.beams = [0, 1, 2].map(() => {
+      const b = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: '#ffcf6a', transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      b.scale.set(0.9, 9, 1);
+      b.visible = false;
+      ctx.world.scene.add(b);
+      return b;
+    });
     ctx.world.addInteractable({
       id: 'cursed-bell', pos: new THREE.Vector3(), radius: 2.2, priority: true,
-      label: () => (this.phase === 'bell' ? 'Ring the cursed bell' : 'The bell is bound by three curses'),
+      label: () => (this.phase === 'bell' ? 'Ring the shrine bell' : 'The bell is sealed — collect the three seals first'),
       enabled: () => this.running && (this.phase === 'bell' || this.phase === 'curses') && !!this.bellPos,
-      action: () => (this.phase === 'bell' ? this.ringBell() : this.ctx.ui.toast(`The bell will not move. Break the curses first (${this.found} / 3).`)),
+      action: () => (this.phase === 'bell' ? this.ringBell() : this.ctx.ui.toast(`The bell will not move. Seals ${this.found} / 3.`)),
     });
     const it = ctx.world.interactables[ctx.world.interactables.length - 1];
     Object.defineProperty(it, 'pos', { get: () => this.bellPos || this.entry });
@@ -58,12 +66,8 @@ export class CursedBell extends CourageChallenge {
     };
     this.ctx.ui.complete(
       `<div class="dlg-role">肝試し · Test of Courage</div><h2 class="fin">The Cursed Bell</h2>
-       <p>Deep in the forest an abandoned shrine holds a bell bound by three curses. <b>Break the curses, ring the bell, and escape alive.</b></p>
-       <p><b>一 Misleading Paths</b> — three ruined shrines, one true. Its marks glow only in lantern light.<br>
-       <b>二 The Guardian</b> — a spirit watches the second ofuda. Distract it, then perform the ritual unseen.<br>
-       <b>三 The Sleeping Rokurokubi</b> — take the last ofuda from beside her lantern without waking her.</p>
-       <p class="muted">Ring the bell and she wakes. She sees far and hears running — break her line of sight, hide in reeds, shelter in stone-lantern light, and reach either torii gate.</p>
-       <p class="muted"><b>C</b> crouch · <b>Shift</b> run · <b>L</b> lantern · <b>E</b> interact / hide · <b>Q</b> pebble · <b>R</b> ofuda ward. No time limit. Caught or overwhelmed → back to the last checkpoint.</p>`,
+       <p><b>Collect three seals → ring the shrine bell → escape the Rokurokubi.</b></p>
+       <p class="muted">Gold light beams and the map show where to go. <b>C</b> crouch · <b>Shift</b> run · <b>L</b> lantern · <b>E</b> interact / hide in reeds · <b>Q</b> throw pebble · <b>X</b> leave. No time limit — if caught you return to the last checkpoint.</p>`,
       [
         [`Easy${best('easy')}`, () => this.start('easy')],
         [`Normal${best('normal')}`, () => this.start('normal')],
@@ -83,6 +87,7 @@ export class CursedBell extends CourageChallenge {
     this.cine = 0;
     super.start(diff); // curses (seals), spirits, Rokurokubi, reeds, stone lanterns, trail
     this.gate = null;
+    this.fuel = 100; // a full lantern at the start of every run (and every retry)
     this.buildBellShrine();
     this.entryBeacon.visible = false;
     this.hud();
@@ -172,10 +177,10 @@ export class CursedBell extends CourageChallenge {
   // Trial banners and hints, renamed as curses.
   banner(n) {
     const T = {
-      1: ['Curse 1 · The Misleading Paths', 'Three ruined shrines, only one true. Its sacred marks glow only in lantern light (L) — but light draws the kasa-obake. Pray (E) at the true shrine.'],
-      2: ['Curse 2 · The Shrine Guardian', 'The hannya never stops watching its ofuda. Throw a pebble (Q) away from it, slip in, and hold the ritual (E) while it looks away. Reeds (E) hide you.'],
-      3: ['Curse 3 · The Sleeping Rokurokubi', 'The last ofuda lies beside her lantern. Lantern off, crouch (C), keep trees between you, and finish the ritual while she searches.'],
-      4: ['Ring the Cursed Bell', 'All three curses are broken. The abandoned shrine is across the path from her — ring its bell (E). Then run.'],
+      1: ['Find the First Seal', 'Follow the lantern trail to the ruined shrines (gold beams). Lantern (L) reveals glowing marks at the true one — pray there (E).'],
+      2: ['Second Seal', 'A spirit guards it. Throw a pebble (Q) away from it, then hold E at the seal while it looks away.'],
+      3: ['Third Seal', 'It lies beside the sleeping Rokurokubi. Lantern off (L), crouch (C), and hold E at the seal unseen.'],
+      4: ['Ring the Bell', 'All three seals are yours. Ring the shrine bell across the path (E) — she will wake.'],
     };
     this.trialText = T[n];
     this.ctx.ui.toast(T[n][0]);
@@ -274,7 +279,7 @@ export class CursedBell extends CourageChallenge {
     for (const z of this.safe) z.ring.material.opacity = 0.55;
     this.exitBeacon.visible = true;
     this.entryBeacon.visible = true;
-    this.trialText = ['ESCAPE — reach either torii gate', 'On past the stone lanterns (she cannot enter their light) to the shrine gate, or back through the reeds to the entrance. Running is fast but she hears it; break her line of sight and she has to search.'];
+    this.trialText = ['Escape', 'Run (Shift) to either torii gate. Break her line of sight, hide in reeds (E), or shelter in stone-lantern light.'];
     startHorror();
     setHorror(0.9);
     this.ctx.ui.toast('RUN! Either gate — forward past the stone lanterns, or back the way you came.');
@@ -305,6 +310,7 @@ export class CursedBell extends CourageChallenge {
       return;
     }
     super.update(dt, t);
+    this.updateBeams(t);
     if (!this.running) return;
     for (const fl of this.shrineFlames || []) fl.material.opacity = (this.phase === 'escape' ? 0.25 : 0.6) + Math.sin(t * 7) * 0.12;
     if (this.phase === 'bell') {
@@ -344,6 +350,7 @@ export class CursedBell extends CourageChallenge {
           this.paused = false;
           this.ctx.world.colliders.circles = this.ctx.world.colliders.circles.filter((c) => c.tag !== 'bellshrine');
           this.entryBeacon.visible = false;
+          this.beams.forEach((b) => (b.visible = false));
           this.phase = 'idle';
           this.abort();
           P.place(new THREE.Vector3(32, 0, -1.4), Math.PI);
@@ -353,25 +360,62 @@ export class CursedBell extends CourageChallenge {
     );
   }
 
+  // The current objective location(s) for beams, the minimap and the direction arrow.
+  targets() {
+    if (!this.running) return [];
+    if (this.phase === 'curses') {
+      if (this.trial === 1) return (this.shrines || []).filter((x) => !x.used).map((x) => ({ p: x.pos, icon: '🙏' }));
+      const seal = this.seals[this.trial - 1];
+      return seal && !seal.taken ? [{ p: seal.pos, icon: '📜' }] : [];
+    }
+    if (this.phase === 'bell' || this.phase === 'cinematic') return [{ p: this.bellPos, icon: '🔔' }];
+    if (this.phase === 'escape') return [{ p: this.exit, icon: '⛩️' }, { p: this.entry, icon: '⛩️' }];
+    return [];
+  }
+
+  mapMarkers() {
+    return this.targets().map((x) => ({ ...x, ring: true }));
+  }
+
+  updateBeams(t) {
+    const tg = this.phase === 'escape' ? [] : this.targets(); // exits already have their own beacons
+    this.beams.forEach((b, i) => {
+      const x = tg[i];
+      b.visible = !!x && this.running;
+      if (!x) return;
+      b.position.set(x.p.x, 4.6, x.p.z);
+      b.material.opacity = 0.35 + Math.sin(t * 2 + i) * 0.12;
+    });
+  }
+
   hud() {
     const fear = Math.round(this.fear || 0);
+    const P = G.player;
     const h = this.hunter;
     let warn = '';
-    if (this.phase === 'escape' && h) warn = this.hidden && !this.hideSeen ? 'hidden — stay still' : h.searching ? 'she lost you — she is searching' : 'SHE SEES YOU';
+    if (this.phase === 'escape' && h) warn = this.hidden && !this.hideSeen ? 'hidden — stay still' : h.searching ? 'she lost you' : 'SHE SEES YOU';
+    else if (this.hidden) warn = this.hideSeen ? 'it saw you hide!' : 'hidden in the reeds';
     else if (this.spirits.some((x) => x.state === 'chase')) warn = 'a spirit is chasing you!';
-    else if (this.spirits.some((x) => x.state === 'investigate')) warn = 'something is searching…';
-    const ritual = this.ritual ? ` · <b style="color:#ffd24a">Ritual ${this.ritual.t.toFixed(1)} / ${this.ritual.dur}s — stay still and unseen</b>` : '';
-    const curses = this.phase === 'curses' ? `Curses <b>${this.found} / 3</b> · ` : '';
-    this.ctx.ui.gameHud(`<div class="gh-title">肝試し · ${this.trialText?.[0] || 'The Cursed Bell'}</div>
-      <div>${curses}Fear <b>${fear}%</b> · Lantern oil <b>${Math.round(this.fuel)}%</b>${ritual}${warn ? ` · <span style="color:#ff8a7a">${warn}</span>` : ''}</div>
-      <div class="bar"><span style="width:${fear}%;background:${fear > 70 ? '#ff5a5a' : fear > 40 ? '#ffb05a' : '#7cf29a'}"></span></div>
-      <div class="gf-dev">${this.trialText?.[1] || ''}</div>
-      <div class="gf-dev">C crouch · Shift run · L lantern · E interact/hide · Q pebble (${this.pebbles}) · R ward (${this.charms}) · X leave · checkpoints left ${Math.max(0, (this.maxFaints || 3) - this.faints - 1)}</div>`);
+    // Direction to the nearest objective, relative to where the player is looking.
+    let dir = '';
+    const tg = this.targets().sort((a, b) => a.p.distanceTo(P.pos) - b.p.distanceTo(P.pos))[0];
+    if (tg) {
+      const rel = Math.atan2(-(tg.p.x - P.pos.x), -(tg.p.z - P.pos.z)) - P.yaw;
+      const d = Math.round(Math.hypot(tg.p.x - P.pos.x, tg.p.z - P.pos.z));
+      dir = `<span style="display:inline-block;transform:rotate(${(-rel * 180) / Math.PI}deg);color:#ffd24a">▲</span> ${tg.icon} ${d} m`;
+    }
+    const ritual = this.ritual ? `<div style="color:#ffd24a"><b>Ritual ${this.ritual.t.toFixed(1)} / ${this.ritual.dur}s</b> — stay close and unseen</div>` : '';
+    const progress = this.phase === 'escape' ? 'Bell rung' : `Seals <b>${this.found} / 3</b>`;
+    this.ctx.ui.gameHud(`<div class="gh-title">${this.trialText?.[0] || 'The Cursed Bell'} <span style="float:right;font-weight:400">${dir}</span></div>
+      <div class="gf-dev">${this.trialText?.[1] || ''}</div>${ritual}
+      <div>${progress} · Fear <b>${fear}%</b> · Oil <b>${Math.round(this.fuel)}%</b> · Pebbles ${this.pebbles}${warn ? ` · <span style="color:#ff8a7a">${warn}</span>` : ''}</div>
+      <div class="bar"><span style="width:${fear}%;background:${fear > 70 ? '#ff5a5a' : fear > 40 ? '#ffb05a' : '#7cf29a'}"></span></div>`);
   }
 
   end(won, reason) {
     if (!this.running) return;
     this.entryBeacon.visible = false;
+    this.beams.forEach((b) => (b.visible = false));
     this.ctx.world.colliders.circles = this.ctx.world.colliders.circles.filter((c) => c.tag !== 'bellshrine');
     const phase = this.phase;
     this.phase = 'idle';
@@ -384,11 +428,11 @@ export class CursedBell extends CourageChallenge {
       } catch {}
       super.end(true, reason);
       const h2 = document.querySelector('#panel h2');
-      if (h2) h2.insertAdjacentHTML('beforebegin', '<p style="margin:0 0 4px;color:#ffd890"><b>You escaped the cursed forest — the Courage Emblem is yours.</b></p>');
+      if (h2) h2.insertAdjacentHTML('beforebegin', '<p style="margin:0 0 4px;color:#ffd890"><b>You escaped the forest — the Courage Emblem is yours.</b></p>');
       return;
     }
     super.end(false, reason);
     const p = document.querySelector('#panel p');
-    if (p) p.innerHTML = `${reason === 'caught' || phase === 'escape' ? 'The Rokurokubi caught you one time too many.' : 'Terror overwhelmed you one time too many.'} Curses broken: <b>${this.found} / 3</b>${phase === 'escape' ? ' · the bell was rung' : ''}. Try a different route, hide sooner, or lure her with a pebble.`;
+    if (p) p.innerHTML = `${reason === 'caught' || phase === 'escape' ? 'The Rokurokubi caught you one time too many.' : 'Terror overwhelmed you one time too many.'} Seals collected: <b>${this.found} / 3</b>${phase === 'escape' ? ' · the bell was rung' : ''}. Try a different route, hide sooner, or lure her with a pebble.`;
   }
 }
