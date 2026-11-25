@@ -890,6 +890,7 @@ let perfN = 0;
 
 let cpuMs = 0;
 let realmNoteT = 0;
+let lastFinaleState = 'idle';
 function frame() {
   requestAnimationFrame(frame);
   const t0 = performance.now();
@@ -951,6 +952,11 @@ function frame() {
     if (kimo?.courage?.running || realm?.active) mood = 'haunted';
     else if (finale?.state === 'intro' || finale?.state === 'show') mood = 'finale';
     else if (hunt?.area === 'town') mood = 'town';
+    // Recorded finale track: let it finish after the show, and keep it on while the player stays by the river.
+    else if (finale?.state === 'done' && music.mode === 'files' && (music.finaleUnfinished || Math.hypot(player.pos.x - 31, player.pos.z - 19.5) < 30)) mood = 'finale';
+    // Each new Lantern Festival (including replays) starts the finale track from 0:00.
+    if (finale?.state === 'intro' && lastFinaleState !== 'intro') music.cue('finale');
+    lastFinaleState = finale?.state;
     let duck = 1;
     if (activeGame === games.taiko) duck = 0; // the rhythm game has its own beat
     else if (activeGame || hunt?.struggle) duck = 0.4;

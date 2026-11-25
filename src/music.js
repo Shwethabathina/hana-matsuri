@@ -1,4 +1,10 @@
-import { audioCore } from './audio.js';
+import { audioCore, setScoreEnabled } from './audio.js';
+import { createSoundtrack, probeSoundtrack } from './soundtrack.js';
+
+// If the team's local music files are present (local-only, see soundtrack.js) the recorded soundtrack is
+// used and this procedural score is not started; otherwise (e.g. the public site) the score below plays.
+const filesProbe = probeSoundtrack();
+let S = null; // recorded-soundtrack engine when active
 
 // Background music: an original, procedurally performed score (no audio files, no licensing issues).
 // Instruments are synthesised in WebAudio: a Karplus-Strong koto, a breathy shakuhachi-like flute with
@@ -89,7 +95,21 @@ export const music = {
     return M?.mood ?? null;
   },
   get running() {
-    return !!M;
+    return !!(M || S);
+  },
+  get mode() {
+    return S ? 'files' : M ? 'procedural' : null;
+  },
+  // Recorded finale track still on its first full play (it is not cut off when the show ends).
+  get finaleUnfinished() {
+    return S ? S.finaleUnfinished : false;
+  },
+  // Restart a recorded track from 0:00 (the finale, each time the Lantern Festival begins).
+  cue(name) {
+    S?.restart(name);
+  },
+  seek(name, sec) {
+    S?.seek(name, sec);
   },
   onChange(f) {
     listeners.add(f);
@@ -101,23 +121,37 @@ export const music = {
     store.set('hm-music-vol', String(settings.volume));
     store.set('hm-music-mute', settings.muted ? '1' : '0');
     applyGain(0.15);
+    S?.level(0.15);
     notify();
   },
   toggleMute() {
     settings.muted = !settings.muted;
     store.set('hm-music-mute', settings.muted ? '1' : '0');
     applyGain(0.3);
+    S?.level(0.3);
     notify();
   },
   // Start the engine (call after a user gesture has created/resumed the audio context).
   start() {
-    if (M) return;
+    if (M || S || this.starting) return;
     const core = audioCore();
     if (!core) return;
-    build(core);
+    this.starting = true;
+    filesProbe.then((files) => {
+      this.starting = false;
+      if (M || S) return;
+      if (files) {
+        // Recorded soundtrack: linear gain (18 % slider = gentle background level), and the procedural
+        // Test of Courage score is switched off so two soundtracks never play at once.
+        S = createSoundtrack(core.ctx, () => (settings.muted ? 0 : settings.volume));
+        setScoreEnabled(false);
+        S.begin();
+      } else build(core);
+    });
   },
   // mood: 'festival' | 'town' | 'haunted' | 'finale' | 'menu' | 'silent'; duck: 0..1 multiplier
   set(mood, duck = 1) {
+    if (S) return S.set(mood, duck);
     if (!M) return;
     if (mood !== M.mood || Math.abs(duck - M.duck) > 0.01) {
       const prevMood = M.mood;
@@ -130,6 +164,7 @@ export const music = {
     }
   },
   debug() {
+    if (S) return S.debug();
     if (!M) return null;
     const buf = new Float32Array(M.an.fftSize);
     M.an.getFloatTimeDomainData(buf);

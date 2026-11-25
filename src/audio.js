@@ -200,8 +200,12 @@ export function setAmbience({ day = 0, night = 0, crowd = 0 }) {
 // Horror score for the Test of Courage: a detuned low drone with a slow swell, breathy shakuhachi-like
 // noise phrases and sparse dissonant koto plucks. setHorror(level) raises tension (0 calm .. 1 chase).
 let horror = null;
+let scoreEnabled = true; // off while the recorded soundtrack provides the forest music
+export function setScoreEnabled(v) {
+  scoreEnabled = v;
+}
 export function startHorror() {
-  if (!ctx || horror) return;
+  if (!ctx || horror || !scoreEnabled) return;
   const out = ctx.createGain();
   out.gain.value = 0;
   out.connect(master);
