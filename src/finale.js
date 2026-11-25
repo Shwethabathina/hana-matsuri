@@ -1,15 +1,14 @@
 import * as THREE from 'three';
-import { RippleWater } from './games/goldfish.js';
-import { L } from './layout.js';
 import { G } from './state.js';
 import { sfx } from './audio.js';
-import { canvasTexture } from './util.js';
+import { RiverFinale, RIVER, DECK } from './riverfinale.js';
 
-// Tōrō nagashi finale: once all five emblems are earned, the player releases one floating lantern per
-// activity onto a small basin by the fireworks viewing area. The basin runs the same height-field wave
-// simulation as the goldfish tub: each lantern splashes in, bobs on the surface height, tilts with the
-// slope and drifts with the waves (and makes its own ripples). When the last lantern settles, the
-// fireworks finale starts.
+// Grand finale — the Lantern Festival on the river (tōrō nagashi).
+// Earning all five emblems unlocks the riverfront deck south of the fireworks viewing area. Pressing E
+// there begins the celebration: a short camera sequence (establishing shot -> your lantern settling onto
+// the water -> the wide view), then control returns while hundreds of lanterns drift downstream, sky
+// lanterns rise and fireworks bloom above the river, all mirrored in the moving water. A "Festival
+// Restored" screen closes the show, with Continue Exploring and Restart.
 export const EMBLEMS = [
   { key: 'goldfish', icon: '🐟', name: 'Goldfish Scooping', color: '#ff7a3a' },
   { key: 'shateki', icon: '🎯', name: 'Shooting Gallery', color: '#e8423a' },
@@ -18,163 +17,152 @@ export const EMBLEMS = [
   { key: 'treasure', icon: '🔔', name: 'Old Town Treasure Hunt', color: '#4ad08a' },
 ];
 
-const POND = new THREE.Vector3(L.viewing.x, 0, L.viewing.z + 3.6);
-const PW = 4.6; // basin water size (m)
-const PD = 2.4;
-const WATER_Y = 0.32;
-
 export const emblemCount = () => EMBLEMS.filter((e) => G.done[e.key]).length;
+const missing = () => EMBLEMS.filter((e) => !G.done[e.key]);
+const SHOW_END = 80; // seconds from pressing E to the completion screen
+
+const look = (pos, target) => new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(pos, target, new THREE.Vector3(0, 1, 0)));
 
 export class LanternFinale {
-  constructor({ world, ui, player, onFireworks }) {
+  constructor({ world, ui, player, fireworks, spirits, onNight, onDone }) {
     this.world = world;
     this.ui = ui;
     this.player = player;
-    this.onFireworks = onFireworks;
-    this.lanterns = [];
-    this.state = 'locked'; // locked -> ready -> releasing -> done
-    this.build();
-  }
-
-  build() {
-    const W = this.world;
-    const g = new THREE.Group();
-    const stone = new THREE.MeshStandardMaterial({ color: '#8d8a84', roughness: 0.95 });
-    const bed = new THREE.Mesh(new THREE.BoxGeometry(PW + 0.1, 0.06, PD + 0.1), new THREE.MeshStandardMaterial({ color: '#23313a', roughness: 1 }));
-    bed.position.y = 0.04;
-    g.add(bed);
-    for (const [w, d, x, z] of [[PW + 0.7, 0.35, 0, PD / 2 + 0.17], [PW + 0.7, 0.35, 0, -PD / 2 - 0.17], [0.35, PD, PW / 2 + 0.17, 0], [0.35, PD, -PW / 2 - 0.17, 0]]) {
-      const rim = new THREE.Mesh(new THREE.BoxGeometry(w, 0.42, d), stone);
-      rim.position.set(x, 0.21, z);
-      rim.castShadow = rim.receiveShadow = true;
-      g.add(rim);
-    }
-    this.water = new RippleWater(PW, PD, 72);
-    this.water.base.set('#1d4f7a');
-    this.water.crest.set('#bfe3ff');
-    this.water.damping = 0.99;
-    this.water.mesh.position.y = WATER_Y;
-    g.add(this.water.mesh);
-    g.position.copy(POND);
-    W.scene.add(g);
-    this.group = g;
-    W.colliders.addRect(POND.x, POND.z, PW / 2 + 0.35, PD / 2 + 0.35, 'lantern-basin');
-
-    // Sign
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.45), new THREE.MeshStandardMaterial({ map: signBoard(), roughness: 0.8 }));
-    sign.position.set(POND.x - PW / 2 - 0.6, 1.05, POND.z - PD / 2 - 0.45);
-    sign.rotation.y = Math.PI;
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.07, 1.0, 0.07), new THREE.MeshStandardMaterial({ color: '#4a3424' }));
-    post.position.set(sign.position.x, 0.5, sign.position.z + 0.02);
-    W.scene.add(sign, post);
-
-    W.addInteractable({
+    this.fireworks = fireworks;
+    this.onNight = onNight;
+    this.onDone = onDone;
+    this.state = 'idle'; // idle -> intro -> show -> done
+    this.river = new RiverFinale({ world, fireworks, spirits });
+    this.cam = null;
+    world.addInteractable({
       id: 'lanterns',
-      pos: new THREE.Vector3(POND.x, 0, POND.z - PD / 2 - 0.9),
-      radius: 2.4,
-      label: () => (this.state === 'done' ? 'Watch the lanterns drift' : emblemCount() < 5 ? `Lantern basin — earn all five emblems first (${emblemCount()}/5)` : 'Release your five festival lanterns'),
-      enabled: () => this.state !== 'releasing',
-      action: () => this.release(),
+      pos: this.river.releasePoint.clone().setZ(DECK.z1 - 0.6),
+      radius: 2.6,
+      priority: true,
+      label: () => {
+        if (this.state === 'intro' || this.state === 'show') return 'The Lantern Festival is under way';
+        if (emblemCount() < 5) return `Lantern Festival — still to earn: ${missing().map((e) => `${e.icon} ${e.name}`).join(', ')}`;
+        return this.state === 'done' ? 'Release another lantern (replay the festival)' : 'Begin the Lantern Festival';
+      },
+      enabled: () => this.state !== 'intro' && this.state !== 'show',
+      action: () => this.begin(),
     });
-    this.sample = {};
-  }
-
-  release() {
-    if (this.state === 'done') return;
-    const n = emblemCount();
-    if (n < 5) {
-      const missing = EMBLEMS.filter((e) => !G.done[e.key]).map((e) => `${e.icon} ${e.name}`).join(', ');
-      this.ui.toast(`Still to earn: ${missing}`);
-      return;
-    }
-    this.state = 'releasing';
-    this.ui.toast('🏮 Tōrō nagashi — one lantern for each part of your festival night');
-    EMBLEMS.forEach((e, i) => setTimeout(() => this.addLantern(e, i), 600 + i * 900));
-    setTimeout(() => {
-      this.state = 'done';
-      G.done.lanterns = true;
-      this.onFireworks?.();
-    }, 600 + EMBLEMS.length * 900 + 1800);
-  }
-
-  addLantern(emblem, i) {
-    const g = new THREE.Group();
-    const paper = new THREE.MeshStandardMaterial({ color: emblem.color, emissive: emblem.color, emissiveIntensity: 1.6, roughness: 0.7 });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), paper);
-    body.position.y = 0.14;
-    const base = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.28), new THREE.MeshStandardMaterial({ color: '#5a3a22', roughness: 0.9 }));
-    base.position.y = 0.02;
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.025, 0.24), base.material);
-    top.position.y = 0.255;
-    g.add(base, body, top);
-    // Start at the near edge, spread along it.
-    const lx = -PW / 2 + 0.7 + i * ((PW - 1.4) / 4);
-    const lz = -PD / 2 + 0.35;
-    g.position.set(lx, WATER_Y, lz);
-    this.group.add(g);
-    const light = this.world.addLight(new THREE.Vector3(POND.x + lx, 0.6, POND.z + lz), { base: 3, distance: 5, color: emblem.color, flicker: 0.15 });
-    this.lanterns.push({ g, x: lx, z: lz, vx: (Math.random() - 0.5) * 0.04, vz: 0.07 + Math.random() * 0.03, light, rippleT: 0 });
-    this.water.disturb(lx, lz, 0.25, -0.06); // splash in
-    sfx.splash?.(0.5);
-  }
-
-  update(dt) {
-    const near = this.player.pos.distanceTo(POND) < 30 || this.lanterns.length;
-    if (!near) return;
-    this.water.update(dt);
-    const s = this.sample;
-    for (const l of this.lanterns) {
-      this.water.sample(l.x, l.z, s);
-      // Drift: a gentle current away from the shore plus the push of the local wave slope.
-      l.vx += (-s.gx * 0.9 + (Math.random() - 0.5) * 0.02) * dt;
-      l.vz += (-s.gz * 0.9 + 0.01) * dt;
-      l.vx *= Math.exp(-0.6 * dt);
-      l.vz *= Math.exp(-0.6 * dt);
-      l.x += l.vx * dt;
-      l.z += l.vz * dt;
-      // Soft walls and lantern–lantern spacing.
-      const mx = PW / 2 - 0.25;
-      const mz = PD / 2 - 0.25;
-      if (Math.abs(l.x) > mx) l.vx -= Math.sign(l.x) * (Math.abs(l.x) - mx) * 3 * dt;
-      if (Math.abs(l.z) > mz) l.vz -= Math.sign(l.z) * (Math.abs(l.z) - mz) * 3 * dt;
-      for (const o of this.lanterns) {
-        if (o === l) continue;
-        const dx = l.x - o.x;
-        const dz = l.z - o.z;
-        const d = Math.hypot(dx, dz);
-        if (d < 0.4 && d > 1e-4) {
-          l.vx += (dx / d) * (0.4 - d) * 0.8 * dt;
-          l.vz += (dz / d) * (0.4 - d) * 0.8 * dt;
-        }
-      }
-      // Ride the surface: height, and tilt with the slope.
-      l.g.position.set(l.x, WATER_Y + s.h, l.z);
-      l.g.rotation.set(Math.atan(s.gz) * 0.8, l.g.rotation.y + dt * 0.1, -Math.atan(s.gx) * 0.8);
-      // Each lantern leaves small ripples as it moves.
-      l.rippleT -= dt;
-      if (l.rippleT <= 0) {
-        l.rippleT = 0.35;
-        this.water.disturb(l.x, l.z, 0.12, 0.004 + Math.hypot(l.vx, l.vz) * 0.03);
-      }
-      l.light.pos.set(POND.x + l.x, 0.6, POND.z + l.z);
-    }
   }
 
   get pos() {
-    return POND;
+    return this.river.releasePoint;
   }
-}
 
-function signBoard() {
-  return canvasTexture(256, 82, (g, w, h) => {
-    g.fillStyle = '#2a1d14';
-    g.fillRect(0, 0, w, h);
-    g.fillStyle = '#ffe7b0';
-    g.font = 'bold 34px "Yu Mincho", serif';
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText('灯籠流し', w / 2, h / 2 - 8);
-    g.font = '16px sans-serif';
-    g.fillText('Lantern basin', w / 2, h / 2 + 24);
-  });
+  begin() {
+    if (this.state === 'intro' || this.state === 'show') return;
+    if (emblemCount() < 5) {
+      this.ui.toast(`The festival spirit needs all five emblems. Still to earn: ${missing().map((e) => `${e.icon} ${e.name}`).join(', ')}`);
+      return;
+    }
+    this.state = 'intro';
+    this.river.start();
+    this.onNight?.();
+    const P = this.player;
+    P.enabled = false;
+    P.unlock();
+    P.vel.set(0, 0, 0);
+    this.ui.prompt(null);
+    this.ui.toast('🏮 Tōrō nagashi — the Lantern Festival begins');
+    sfx.suzu();
+    const D = DECK;
+    // Camera keyframes: [time, position, look-at]
+    this.cam = {
+      t: 0,
+      start: { pos: null, quat: null },
+      keys: [
+        [3.4, new THREE.Vector3(D.x - 2, 9.5, D.z1 - 0.2), new THREE.Vector3(D.x + 3, 6, 80)], // establishing: river, banks, sky
+        [6.2, new THREE.Vector3(D.x, 1.55, D.z1 - 0.4), new THREE.Vector3(D.x, -0.3, RIVER.zN + 2.2)], // the release, from the steps
+        [9.6, new THREE.Vector3(D.x, 1.6, D.z1 - 0.3), new THREE.Vector3(D.x - 3, 0.2, RIVER.zN + 5)], // it drifts away
+        [12.5, new THREE.Vector3(D.x, 2.1, D.z1 - 0.9), new THREE.Vector3(D.x, 9, 75)], // the wide view
+      ],
+    };
+    this.released = false;
+    this.fwStarted = 0;
+  }
+
+  // Called by main every frame while this.cam is set (replaces the first-person camera).
+  applyCamera(camera) {
+    const C = this.cam;
+    if (!C.start.quat) {
+      C.start.pos = camera.position.clone();
+      C.start.quat = camera.quaternion.clone();
+    }
+    let prevT = 0;
+    let prevPos = C.start.pos;
+    let prevQ = C.start.quat;
+    for (const [kt, kp, kl] of C.keys) {
+      const kq = look(kp, kl);
+      if (C.t <= kt) {
+        const u = Math.min(1, Math.max(0, (C.t - prevT) / (kt - prevT)));
+        const e = u * u * (3 - 2 * u);
+        camera.position.lerpVectors(prevPos, kp, e);
+        camera.quaternion.slerpQuaternions(prevQ, kq, e);
+        return;
+      }
+      prevT = kt;
+      prevPos = kp;
+      prevQ = kq;
+    }
+    camera.position.copy(prevPos);
+    camera.quaternion.copy(prevQ);
+  }
+
+  update(dt, t) {
+    this.river.update(dt, t, this.player.pos);
+    if (this.state !== 'intro' && this.state !== 'show') return;
+    const T = this.river.t;
+    if (this.cam) {
+      this.cam.t += dt;
+      if (!this.released && this.cam.t > 5.6) {
+        this.released = true;
+        this.river.releasePlayerLantern();
+        sfx.splash?.(0.4);
+        this.ui.toast('Your lantern settles onto the river…');
+      }
+      if (this.cam.t > 12.6) {
+        // Hand control back on the deck, looking out over the river; the show continues around the player.
+        const P = this.player;
+        P.place(new THREE.Vector3(DECK.x, 0, DECK.z1 - 0.9), Math.PI);
+        P.pitch = 0.16;
+        P.enabled = true;
+        this.cam = null;
+        this.state = 'show';
+        this.ui.toast('Look around — lanterns fill the river and the sky. Walk freely; the show goes on.');
+      }
+    }
+    // The existing fireworks show (shells, crackle, sound) joins the baked fireworks over the river.
+    if (T > 12 && this.fwStarted === 0) {
+      this.fwStarted = 1;
+      this.fireworks.startShow(() => {});
+    }
+    if (T > 46 && this.fwStarted === 1 && !this.fireworks.show) {
+      this.fwStarted = 2;
+      this.fireworks.startShow(() => {});
+    }
+    if (T > SHOW_END && this.state === 'show') this.finish();
+  }
+
+  finish() {
+    this.state = 'done';
+    G.done.lanterns = true;
+    this.onDone?.();
+    const P = this.player;
+    P.enabled = false;
+    P.unlock();
+    const s = this.river.stats();
+    this.ui.complete(
+      `<div class="dlg-role">花祭り · Hana Matsuri</div><h2 class="fin">🏮 Festival Restored</h2>
+       <p>The Kagura Bell sings again, and the festival spirit has come home. Your lantern leads ${Math.max(0, s.floating - 1)} others down the river while ${s.sky} sky lanterns drift toward the stars.</p>
+       <p class="muted">Emblems ${EMBLEMS.map((e) => e.icon).join(' ')} · Foods tried ${G.foods?.size ?? 0} · Prizes ${G.prizes?.length ?? 0}. Thank you for spending the night at Hana Matsuri.</p>`,
+      [
+        ['Continue exploring', () => (P.enabled = true)],
+        ['Restart the Lantern Festival', () => this.begin()],
+      ],
+    );
+  }
 }

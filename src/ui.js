@@ -10,7 +10,7 @@ const OBJECTIVES = [
   ['taiko', 'Taiko rhythm', '太鼓'],
   ['kimodameshi', 'Test of courage', '肝試し'],
   ['treasure', 'Old Town treasure hunt', '宝探し'],
-  ['lanterns', 'Release the festival lanterns', '灯籠流し'],
+  ['lanterns', 'Begin the Lantern Festival at the riverfront', '灯籠流し'],
   ['shrine', 'Pray at the shrine', '参拝'],
   ['fireworks', 'Watch the fireworks finale', '花火'],
 ];

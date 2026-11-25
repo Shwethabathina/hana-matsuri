@@ -82,7 +82,7 @@ function markDone(id) {
   const em = EMBLEMS.find((e) => e.key === id);
   if (em) {
     const n = emblemCount();
-    ui.toast(n < 5 ? `${em.icon} Emblem earned: ${em.name} (${n}/5)` : '🏮 All five emblems! Release the festival lanterns at the basin by the viewing area.');
+    ui.toast(n < 5 ? `${em.icon} Emblem earned: ${em.name} (${n}/5)` : '🏮 All five emblems! Go to the riverfront deck south of the fireworks viewing area and begin the Lantern Festival.');
   }
 }
 
@@ -569,7 +569,7 @@ function drawMinimap(npcs) {
     [L.kimoEntrance, '👻', G.done.kimodameshi], [L.torii, '⛩️', false], [L.offering, '🙏', G.done.shrine],
     [L.viewing, '🎆', G.done.fireworks], [L.omikuji, '📜', false], [new THREE.Vector3(0, 0, 0), '🏮', G.done.explore],
     [new THREE.Vector3(13.4, 0, 4.7), '🔔', G.done.treasure],
-    [new THREE.Vector3(L.viewing.x, 0, L.viewing.z + 3.6), '🪔', G.done.lanterns],
+    [new THREE.Vector3(31, 0, 19.5), '🏮', G.done.lanterns],
   ];
   for (const [p, ic, done] of icons) {
     mm.globalAlpha = done ? 0.45 : 1;
@@ -689,7 +689,13 @@ async function boot() {
     ui.progress(1, '⚠️ Could not load the Old Town model — the treasure hunt is unavailable.');
   }
 
-  finale = new LanternFinale({ world, ui, player, onFireworks: () => startFinale() });
+  finale = new LanternFinale({
+    world, ui, player, fireworks, spirits: ctx.spirits,
+    onNight: () => {
+      if (world.tod < 0.95) todTarget = 1;
+    },
+    onDone: () => markDone('fireworks'),
+  });
   ui.objectives();
   ui.emblems(EMBLEMS);
   // Handle for debugging / automated screenshots from the console.
@@ -835,7 +841,7 @@ function frame() {
     const target = st >= QS.COMPLETE ? 1 : st >= QS.RING_BELL ? 0.5 + Math.sin(elapsed * 7) * 0.04 * Math.random() : 1 - 0.3 * Math.max(0, world.tod - 0.7) / 0.3;
     world.lightLevel = damp(world.lightLevel, target, 1.5, dt);
   }
-  if (!festivalPaused) finale?.update(dt);
+  if (!festivalPaused) finale?.update(dt, elapsed);
   fireworks.update(dt);
 
   // Camera: tween, minigame pose, or first-person
@@ -850,6 +856,8 @@ function frame() {
       tween = null;
       done?.();
     }
+  } else if (finale?.cam) {
+    finale.applyCamera(camera); // Lantern Festival cinematic
   } else if (!activeGame) {
     player.applyCamera();
   }

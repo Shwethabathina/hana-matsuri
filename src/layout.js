@@ -24,7 +24,7 @@ export const L = {
   fireworksLaunch: new THREE.Vector3(38, -3.2, 78),
 };
 
-export const WORLD_BOUNDS = { minX: -11, maxX: 58.5, minZ: -54, maxZ: 15 };
+export const WORLD_BOUNDS = { minX: -11, maxX: 58.5, minZ: -54, maxZ: 20.4 }; // south edge = the riverbank
 
 export const WATER_Y = -3.2;
 

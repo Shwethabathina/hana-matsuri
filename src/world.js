@@ -624,6 +624,7 @@ export class World {
         if (px > -42 && px < 88 && pz > -42 && pz < 46) continue; // sakura ring band
         if (px > 0 && px < 80 && pz >= 16 && pz < 40) continue;
         if (px > 20 && px < 60 && pz >= 40 && pz < 95) continue;
+        if (pz > 14 && pz < 62) continue; // the river and its banks
         spots.push([px, pz, rand(0.9, 1.6), false]);
       }
     }
@@ -640,6 +641,7 @@ export class World {
         if (px > -16 && px < 60 && pz > -18 && pz < 17) continue; // festival + plaza
         if (px > 14 && px < 62 && pz <= -18) continue; // kimodameshi forest
         if (px > 14 && px < 62 && pz >= 17 && pz < 34) continue; // keep the fireworks view open
+        if (pz > 16 && pz < 60) continue; // the river and its banks (the finale plants its own bank sakura)
         ring.push([px, pz, 0, rand(1, 1.35)]);
       }
     }
