@@ -136,7 +136,7 @@ export const music = {
     let sum = 0;
     for (const v of buf) sum += v * v;
     const r = (x) => Math.round(x * 10000) / 10000;
-    return { mood: M.mood, duck: M.duck, step: M.step, loops: M.loops, gain: r(M.out.gain.value), target: r(targetGain()), rms: r(Math.sqrt(sum / buf.length)), volume: settings.volume, muted: settings.muted, ctx: M.ctx.state };
+    return { mood: M.mood, duck: M.duck, step: M.step, playedSec: Math.round((M.ctx.currentTime - M.started) * 100) / 100, firstNoteAt: M.started, loops: M.loops, gain: r(M.out.gain.value), target: r(targetGain()), rms: r(Math.sqrt(sum / buf.length)), volume: settings.volume, muted: settings.muted, ctx: M.ctx.state };
   },
 };
 
@@ -202,8 +202,9 @@ function build({ ctx, master, noiseBuf }) {
   const an = ctx.createAnalyser(); // level meter for the settings readout / automated tests
   an.fftSize = 2048;
   out.connect(an);
-  M = { ctx, out, bus, wind, an, noiseBuf, mood: 'menu', duck: 1, step: 0, loops: 0, next: ctx.currentTime + 0.3, koto: new Map() };
-  applyGain(2.5); // gentle fade-in
+  // Step 0 = the first note of the piece, scheduled just after Start Game is pressed.
+  M = { ctx, out, bus, wind, an, noiseBuf, mood: 'festival', duck: 1, step: 0, loops: 0, started: ctx.currentTime + 0.15, next: ctx.currentTime + 0.15, koto: new Map() };
+  out.gain.setValueAtTime(targetGain(), M.next); // full (soft) level from the very first note
   M.timer = setInterval(schedule, 90);
   document.addEventListener('visibilitychange', () => {
     if (!M) return;

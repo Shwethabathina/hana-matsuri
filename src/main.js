@@ -73,9 +73,10 @@ resize();
 
 // ---------------------------------------------------------------- audio (respects autoplay rules)
 // Nothing can play before the first click / key press; the first one starts the sound engine and music.
+// The soundtrack itself starts from its first note when the player presses Start Game (see begin()),
+// and then plays continuously: area changes only cross-fade its volume, they never restart it.
 function startAudio() {
   initAudio();
-  music.start();
 }
 for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, startAudio, { capture: true });
 {
@@ -796,6 +797,7 @@ async function boot() {
   setTimeout(() => (document.getElementById('progress').style.visibility = 'hidden'), 600);
   const begin = (toTown) => {
     startAudio();
+    music.start(); // 0:00 of the soundtrack
     const start = document.getElementById('start');
     start.classList.add('fading');
     setTimeout(() => start.classList.add('hidden'), 600);
