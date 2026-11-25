@@ -891,6 +891,8 @@ let perfN = 0;
 let cpuMs = 0;
 let realmNoteT = 0;
 let lastFinaleState = 'idle';
+let inForest = false;
+let finaleScreen = false; // the "Festival Restored" screen of the show that just ended
 function frame() {
   requestAnimationFrame(frame);
   const t0 = performance.now();
@@ -949,16 +951,24 @@ function frame() {
   // Music: area mood (cross-faded) and ducking under dialogue, panels and mini-games.
   if (music.running) {
     let mood = !started ? 'menu' : 'festival';
-    if (kimo?.courage?.running || realm?.active) mood = 'haunted';
-    else if (finale?.state === 'intro' || finale?.state === 'show') mood = 'finale';
+    // Haunted forest: from the moment a Test of Courage (or Spirit Realm) run starts until the player is back
+    // in control outside it — so the result / "Leave the forest?" screens keep the forest music too.
+    if (kimo?.courage?.running || realm?.active) inForest = true;
+    else if (player.enabled) inForest = false;
+    // Winning celebration: only while the Lantern Festival show runs (intro cinematic + show) and its
+    // "Festival Restored" screen is open — never in ordinary play, even with five emblems.
+    if (finale?.state === 'done' && lastFinaleState === 'show') finaleScreen = true; // the show just ended
+    if (finaleScreen && (finale?.state !== 'done' || document.getElementById('panel').classList.contains('hidden'))) finaleScreen = false;
+    const finaleOn = finale?.state === 'intro' || finale?.state === 'show' || finaleScreen;
+    if (inForest) mood = 'haunted';
+    else if (finaleOn) mood = 'finale';
     else if (hunt?.area === 'town') mood = 'town';
-    // Recorded finale track: let it finish after the show, and keep it on while the player stays by the river.
-    else if (finale?.state === 'done' && music.mode === 'files' && (music.finaleUnfinished || Math.hypot(player.pos.x - 31, player.pos.z - 19.5) < 30)) mood = 'finale';
     // Each new Lantern Festival (including replays) starts the finale track from 0:00.
     if (finale?.state === 'intro' && lastFinaleState !== 'intro') music.cue('finale');
     lastFinaleState = finale?.state;
     let duck = 1;
-    if (activeGame === games.taiko) duck = 0; // the rhythm game has its own beat
+    // The procedural score sits out the taiko rhythm game; the recorded festival track keeps playing (softer).
+    if (activeGame === games.taiko) duck = music.mode === 'files' ? 0.4 : 0;
     else if (activeGame || hunt?.struggle) duck = 0.4;
     else if (started && ui.panelOpen) duck = 0.55;
     music.set(mood, duck);
