@@ -334,7 +334,7 @@ export class Kimodameshi {
     const ent = this.curve.getPointAt(0.03);
     const dEnt = Math.hypot(G.player.pos.x - ent.x, G.player.pos.z - ent.z);
     const inRealm = window.__hana?.realm?.active || window.__hana?.hunt?.quest?.state === 8; // SPIRIT_REALM
-    if (dEnt < 3 && !this.introOpen && !inRealm && G.mode === 'explore' && !this.ctx.ui.panelOpen) {
+    if (dEnt < 3 && !this.introOpen && !inRealm && !G.tutorial && G.mode === 'explore' && !this.ctx.ui.panelOpen) {
       this.introOpen = true;
       this.start();
     }

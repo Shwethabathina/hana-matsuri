@@ -168,6 +168,40 @@
       #progress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.2s; }
       #loadtext { font-size: 11.5px; color: var(--muted); min-height: 16px; }
       .fortune { font-size: 64px; text-align: center; margin: 6px 0; color: var(--accent2); font-family: "Yu Mincho", serif; }
+      /* Tutorial card (bottom-left, compact) and highlights */
+      #tut { position: fixed; left: 14px; bottom: 14px; z-index: 23; width: min(340px, calc(100vw - 28px)); padding: 11px 14px 10px; display: none; pointer-events: auto;
+        background: rgba(20,11,20,0.9); border: 1px solid rgba(255,210,120,0.45); border-radius: 12px; box-shadow: 0 10px 34px rgba(0,0,0,0.45); transition: opacity 0.2s; font-size: 13.5px; line-height: 1.45; }
+      #tut.on { display: block; animation: tutIn 0.3s ease-out; }
+      #tut.dim { opacity: 0.25; }
+      @keyframes tutIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+      #tut .th { display: flex; justify-content: space-between; align-items: center; font-size: 10.5px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent2); }
+      #tut .tskip { all: unset; cursor: pointer; font-size: 11px; letter-spacing: 0.3px; text-transform: none; color: var(--muted); padding: 2px 4px; border-radius: 4px; }
+      #tut .tskip:hover { color: #fff; background: rgba(255,255,255,0.1); }
+      #tut .tt { font-family: "Yu Mincho", "Hiragino Mincho ProN", Georgia, serif; font-size: 19px; margin: 3px 0 5px; color: #ffe8c4; }
+      #tut .tb b.gold, #tut .gold { color: var(--accent2); }
+      #tut .tsub { display: block; color: var(--muted); font-size: 12.5px; margin-top: 5px; }
+      #tut .tg { margin-top: 7px; font-size: 13px; color: #bfe9ff; min-height: 18px; }
+      #tut .tg:empty { display: none; }
+      #tut .tbtns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+      #tut .tbtns:empty { display: none; }
+      #tut .btn.ghost { background: rgba(255,255,255,0.08); }
+      #tut .tfoot { font-size: 10.5px; color: rgba(255,230,200,0.45); margin-top: 6px; }
+      #tut .tgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin: 6px 0 2px; font-size: 13px; }
+      .tk { display: inline-block; min-width: 22px; text-align: center; background: #fff; color: #222; border-radius: 5px; padding: 0 6px; font-weight: 800; font-size: 12px; box-shadow: 0 2px 0 #b9a58c; transition: background 0.08s, transform 0.08s; }
+      .tk.on { background: var(--accent2); transform: translateY(2px); box-shadow: none; }
+      .tut-hl { outline: 2px solid var(--accent2); outline-offset: 3px; animation: tutHl 1.2s ease-in-out infinite; }
+      @keyframes tutHl { 50% { outline-color: rgba(255,210,74,0.25); box-shadow: 0 0 26px rgba(255,210,74,0.55); } }
+      body.tutorial #hint { display: none; }
+      ul.intro { list-style: none; padding: 0; margin: 10px 0 4px; line-height: 1.5; font-size: 14px; }
+      ul.intro li { margin: 6px 0; padding-left: 0; }
+      ul.intro li > b:first-child { display: inline-block; min-width: 96px; color: var(--accent2); font-weight: 700; }
+      /* Music control */
+      #musicctl { right: 14px; bottom: 44px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; pointer-events: auto; font-size: 12px; color: var(--muted); }
+      #musicctl button { all: unset; cursor: pointer; font-size: 16px; width: 22px; text-align: center; }
+      #musicctl input { width: 92px; accent-color: var(--accent2); }
+      #musicctl.muted input { opacity: 0.4; }
+      #dev { bottom: 82px; }
+      #menu-page input[type=range] { width: 120px; accent-color: var(--accent2); }
       @media (max-width: 760px) {
         #minimap { width: 120px; height: 120px; }
         #menu-page .grid { grid-template-columns: 1fr; }
@@ -210,13 +244,15 @@
       <div id="pstats" class="stat"></div>
     </div>
     <div id="gear" class="hud card">⚙ Developer ( ` )</div>
+    <div id="musicctl" class="hud card" title="Background music (M to mute)"><button id="mus-btn" aria-label="Mute music">🎵</button><input id="mus-vol" type="range" min="0" max="100" aria-label="Music volume" /><span id="mus-pct">18%</span></div>
+    <div id="tut"></div>
 
     <div id="quest" class="hud card"></div>
     <div id="gamehud" class="hud card"></div>
     <div id="prompt" class="hud card"></div>
     <div id="toasts" class="hud"></div>
     <div id="hint" class="hud card">
-      <b>WASD</b> move · <b>Shift</b> run · <b>Mouse</b> look · <b>E</b> interact · <b>J</b> journal · <b>H</b> help · <b>Esc</b> leave game
+      <b>WASD</b> move · <b>Shift</b> run · <b>C</b> crouch · <b>Mouse</b> look · <b>E</b> interact · <b>J</b> journal · <b>H</b> help · <b>M</b> music · <b>Esc</b> leave game
     </div>
     <div id="fps" class="hud"></div>
     <div id="flash"></div>
@@ -243,21 +279,23 @@
         <template id="howto">
           <div class="grid">
             <div><b>WASD</b> walk · <b>Shift</b> run</div>
+            <div><b>C</b> crouch (quiet)</div>
             <div><b>Mouse</b> / <b>Arrows</b> look</div>
             <div><b>E</b> talk · examine · play</div>
             <div><b>Esc</b> leave a minigame</div>
-            <div><b>T</b> dusk → night</div>
-            <div><b>F</b> fireworks</div>
             <div><b>J</b> festival journal</div>
-            <div><b>`</b> developer panel</div>
+            <div><b>M</b> music on / off</div>
+            <div><b>T</b> dusk → night · <b>F</b> fireworks</div>
           </div>
-          <p class="muted">Earn five emblems: goldfish scooping, the shooting gallery, taiko, the test of courage and the Old Town treasure hunt (through the small torii on the game plaza). With all five, release the festival lanterns at the basin by the viewing area to begin the fireworks.</p>
+          <p class="muted">Earn five emblems: goldfish scooping, the shooting gallery, taiko, the test of courage and the Old Town treasure hunt (through the small torii on the game plaza). With all five, go to the riverfront deck south of the fireworks viewing area and press E to begin the Lantern Festival.</p>
         </template>
         <template id="settings">
           <label>Graphics quality <button id="set-quality" class="btn">High</button></label>
           <label>Performance overlay <button id="set-perf" class="btn">Off</button></label>
           <label>Automatic time of day <button id="set-auto" class="btn">On</button></label>
           <label>Mini-game difficulty <button id="set-diff" class="btn">Easy</button></label>
+          <label>Music volume <span><input id="set-music" type="range" min="0" max="100" /> <span id="set-music-pct">18%</span></span></label>
+          <label>Tutorial <button id="set-tut" class="btn">Replay on start</button></label>
         </template>
       </div>
     </div>
@@ -269,7 +307,8 @@
       Sakura: <a href="https://sketchfab.com/3d-models/sakura-tree-01-low-poly-model-147ae7d0d332456a99ec6195e9b0cd4f" target="_blank">"Sakura Tree 01"</a> by Jogoss ·
       Forest: <a href="https://sketchfab.com/3d-models/a-forest-3-with-a-road-at-night-for-game-61f8c7817fe6457fb26e4814cfc48a3f" target="_blank">"a forest (3)"</a> by dasy444 ·
       Festival-goers: <a href="https://sketchfab.com/3d-models/japanese-kimono-v1-944695110b1a404d9ec4ad30bc19d5ef" target="_blank">"Japanese Kimono V1"</a> by Fadly.W, <a href="https://sketchfab.com/3d-models/geisha-in-a-satin-floral-kimono-f9e5d4df95bd4d98a3bb723fa79e986f" target="_blank">"geisha in a satin floral kimono"</a> by alicean ·
-      Finale: <a href="https://sketchfab.com/the9thearl" target="_blank">"Free Ocean simulation-Tiled"</a> by the9thearl (river ripple textures), "Red / Blue / Yellow Lantern (Sky Lantern)" by Just Vy, "Fireworks Demo" by Laurie Annis, "Playful Pyrotechnics" by Tycho Magnetic Anomaly, "fireworks" by PENguins (baked to particles) — all Sketchfab, CC-BY-4.0
+      Finale: <a href="https://sketchfab.com/the9thearl" target="_blank">"Free Ocean simulation-Tiled"</a> by the9thearl (river ripple textures), "Red / Blue / Yellow Lantern (Sky Lantern)" by Just Vy, "Fireworks Demo" by Laurie Annis, "Playful Pyrotechnics" by Tycho Magnetic Anomaly, "fireworks" by PENguins (baked to particles) — all Sketchfab, CC-BY-4.0 ·
+      Music: original procedural score (koto, shakuhachi-style flute, taiko) synthesised live in WebAudio for this project
     </div>
 
     <div id="panel" class="overlay hidden">

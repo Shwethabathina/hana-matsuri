@@ -552,7 +552,12 @@ export class TreasureHunt {
     P.unlock();
     this.ui.panel(`<div class="dlg-role">The Old Town</div><h2 class="fin">The Missing Festival Heirloom</h2>
       <p>The festival’s Kagura Bell has been stolen on the night of the procession. Talk to the townsfolk, read the clues, and track down the thief.</p>
-      <p class="muted"><b>E</b> talk / examine · <b>C</b> crouch (quieter, harder to see) · <b>Shift</b> run · <b>J</b> journal. People only notice you when they can see you.</p>`,
+      <ul class="intro">
+        <li><b>Investigate</b> Talk to townsfolk and examine glowing objects with <b>E</b>. Clues are saved in your journal (<b>J</b>); the objective at the top and the gold arrow / dotted route on the map show where to go next.</li>
+        <li><b>Catch the tanuki</b> It flees if it sees or hears you. Hold <b>C</b> to crouch and creep up from behind (don’t run). Within about 2 m, press <b>E</b> to grab it.</li>
+        <li><b>The struggle</b> Press <b>Space</b> when the white marker is inside the gold zone, three times. Three misses and it slips away; find it again and retry.</li>
+        <li><b>Exit</b> The torii at the edge of town leads back to the festival.</li>
+      </ul>`,
     () => (P.enabled = true), 'Begin');
   }
 

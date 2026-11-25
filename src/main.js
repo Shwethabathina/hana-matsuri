@@ -22,6 +22,8 @@ import { buildStallGoods } from './stallgoods.js';
 import { createUI } from './ui.js';
 import { G, TUNING } from './state.js';
 import { initAudio, setAmbience, sfx, audioTime } from './audio.js';
+import { music } from './music.js';
+import { Tutorial, tutorialSeen } from './tutorial.js';
 import { L, STALLS, stallFront, KIMO_PATH, WORLD_BOUNDS } from './layout.js';
 import { damp, lerp, pick } from './util.js';
 
@@ -69,6 +71,30 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
+// ---------------------------------------------------------------- audio (respects autoplay rules)
+// Nothing can play before the first click / key press; the first one starts the sound engine and music.
+function startAudio() {
+  initAudio();
+  music.start();
+}
+for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, startAudio, { capture: true });
+{
+  // HUD music control: mute button + volume slider (remembered on this device).
+  const box = document.getElementById('musicctl');
+  const vol = document.getElementById('mus-vol');
+  const pct = document.getElementById('mus-pct');
+  const btn = document.getElementById('mus-btn');
+  music.onChange((s) => {
+    vol.value = Math.round(s.volume * 100);
+    pct.textContent = s.muted ? 'off' : `${Math.round(s.volume * 100)}%`;
+    btn.textContent = s.muted || s.volume === 0 ? '🔇' : '🎵';
+    box.classList.toggle('muted', s.muted);
+  });
+  vol.addEventListener('input', () => music.setVolume(vol.value / 100));
+  btn.addEventListener('click', () => music.toggleMute());
+  for (const el of [vol, btn]) el.addEventListener('keydown', (e) => e.code !== 'Tab' && el.blur());
+}
+
 // ---------------------------------------------------------------- game context
 let activeGame = null;
 const ctx = { scene, camera, world, ui, fireworks, finish, markDone, canvas };
@@ -107,8 +133,46 @@ function tweenCamera(toPos, toQuat, dur, done) {
 }
 
 const PRICES = { goldfish: 300, shateki: 400, taiko: 0 };
-function enterGame(id) {
+// First-time introductions for the booth games (objective, controls, how to win, retry / exit).
+const INTROS = {
+  goldfish: () => ['金魚すくい · Goldfish Scooping', 'Scoop goldfish with a paper poi before the paper tears.',
+    '<b>Mouse</b> aim · <b>hold</b> the left button to dip the poi · <b>release</b> under a fish to scoop it · <b>Space</b> or a tap makes ripples that herd the fish (but soak the paper).',
+    'Catch at least <b>one</b> goldfish to earn the 🐟 emblem (plus yen for every fish).', `<b>Esc</b> leaves. Press <b>E</b> at the booth to try again (¥${PRICES.goldfish} a try).`],
+  shateki: () => ['射的 · Shooting Gallery', 'Knock prizes off the shelf with cork shots.',
+    '<b>Mouse</b> aim · <b>click</b> to fire. Corks drop with gravity, so aim a little high.',
+    `Knock off at least <b>one</b> prize with your ${TUNING[G.difficulty].corks ?? ''} corks to earn the 🎯 emblem.`, `<b>Esc</b> leaves. Press <b>E</b> at the booth to try again (¥${PRICES.shateki} a try).`],
+  taiko: () => ['太鼓 · Taiko Rhythm', 'Hit each drum note as it reaches the circle.',
+    '<b>F / J</b> or <b>left click</b> = <span style="color:#ff6a5a">DON</span> (red, centre) · <b>D / K</b> or <b>right click</b> = <span style="color:#5ab8ff">KA</span> (blue, rim).',
+    `Reach <b>${TUNING[G.difficulty].taikoPass ?? ''}%</b> accuracy to earn the 🥁 emblem (difficulty: ${TUNING[G.difficulty].label}${TUNING[G.difficulty].anyDrum ? ' — on Easy either drum counts' : ''}).`, '<b>Esc</b> leaves. Playing is free: press <b>E</b> on the stage to play again.'],
+};
+const introSeen = (id) => {
+  try {
+    return localStorage.getItem(`hm-intro-${id}`) === '1';
+  } catch {
+    return true;
+  }
+};
+function gameIntro(id, go) {
+  const [title, goal, controls, win, retry] = INTROS[id]();
+  player.enabled = false;
+  player.unlock();
+  ui.complete(
+    `<div class="dlg-role">First time here</div><h2 class="fin">${title}</h2>
+     <ul class="intro"><li><b>Goal</b> ${goal}</li><li><b>Controls</b> ${controls}</li><li><b>To win</b> ${win}</li><li><b>Retry / exit</b> ${retry}</li></ul>`,
+    [
+      ['Play', () => {
+        try {
+          localStorage.setItem(`hm-intro-${id}`, '1');
+        } catch {}
+        go();
+      }],
+      ['Not now', () => (player.enabled = true)],
+    ],
+  );
+}
+function enterGame(id, skipIntro = false) {
   const game = games[id];
+  if (!skipIntro && INTROS[id] && !introSeen(id)) return gameIntro(id, () => enterGame(id, true));
   if (PRICES[id] && G.coins < PRICES[id]) return ui.toast('Not enough yen!');
   G.coins -= PRICES[id] || 0;
   if (PRICES[id]) sfx.coin();
@@ -293,7 +357,7 @@ function togglePerceptionMode() {
 document.getElementById('btn-debug').addEventListener('click', toggleDebug);
 document.getElementById('btn-quality').addEventListener('click', toggleQuality);
 document.getElementById('btn-fw').addEventListener('click', () => {
-  initAudio();
+  startAudio();
   startFinale();
 });
 document.getElementById('btn-perf').addEventListener('click', togglePerf);
@@ -340,6 +404,10 @@ player.place(L.start, -Math.PI / 2);
 
 let nearest = null;
 addEventListener('keydown', (e) => {
+  if (started && e.code === 'KeyM' && !e.repeat) {
+    music.toggleMute();
+    ui.toast(music.muted ? '🔇 Music off (M)' : `🎵 Music on · ${Math.round(music.volume * 100)}%`);
+  }
   if (!started || ui.panelOpen) return;
   if (activeGame) {
     if (e.code === 'Escape') exitGame();
@@ -355,7 +423,7 @@ addEventListener('keydown', (e) => {
       cycleTime();
       break;
     case 'KeyF':
-      startFinale();
+      if (!G.tutorial) startFinale();
       break;
     case 'KeyN':
       toggleDebug();
@@ -365,7 +433,11 @@ addEventListener('keydown', (e) => {
       break;
     case 'KeyH':
       player.unlock();
-      ui.panel(`<h2>How to play</h2>${document.getElementById('howto').innerHTML}`, null, 'Close');
+      player.enabled = false;
+      ui.complete(`<h2>How to play</h2>${document.getElementById('howto').innerHTML}`, [
+        ['Close', () => (player.enabled = true)],
+        ['Replay tutorial', () => replayTutorial()],
+      ]);
       break;
     case 'KeyJ':
       ui.toggleJournal();
@@ -593,6 +665,21 @@ let kimo = null;
 let hunt = null;
 let finale = null;
 let realm = null;
+let tutorial = null;
+let forceTutorial = false; // Settings -> "Replay tutorial" before starting
+
+// Replay from Help: back to the street entrance (leaving the Old Town if needed), then the tutorial.
+function replayTutorial() {
+  if (activeGame || kimo?.courage?.running || realm?.active || finale?.state === 'intro' || finale?.state === 'show') {
+    player.enabled = true;
+    return ui.toast('Finish the current activity first, then replay the tutorial from Help (H).');
+  }
+  const go = () => ui.fade(() => tutorial.start({ first: false }));
+  if (hunt?.area === 'town') {
+    hunt.exit();
+    setTimeout(go, 650);
+  } else go();
+}
 
 async function boot() {
   const manager = new THREE.LoadingManager();
@@ -696,10 +783,11 @@ async function boot() {
     },
     onDone: () => markDone('fireworks'),
   });
+  tutorial = new Tutorial({ world, player, ui, camera, spirits: ctx.spirits, canvas });
   ui.objectives();
   ui.emblems(EMBLEMS);
   // Handle for debugging / automated screenshots from the console.
-  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto, hunt, finale, realm, markDone, renderer, measure, audioTime, toggleCulling, get areaCulling() { return areaCulling; } };
+  window.__hana = { THREE, world, player, G, camera, games, kimo, npcs, fireworks, enterGame, exitGame, startFinale, setAuto, hunt, finale, realm, markDone, renderer, music, get tutorial() { return tutorial; }, replayTutorial, ui, measure, audioTime, toggleCulling, get areaCulling() { return areaCulling; } };
   // Warm up shaders so the first frame after entering doesn't hitch.
   renderer.compile(scene, camera);
   // Tree models stream in after start-up; compile their shaders before they first appear.
@@ -707,7 +795,7 @@ async function boot() {
   ui.progress(1, 'Ready');
   setTimeout(() => (document.getElementById('progress').style.visibility = 'hidden'), 600);
   const begin = (toTown) => {
-    initAudio();
+    startAudio();
     const start = document.getElementById('start');
     start.classList.add('fading');
     setTimeout(() => start.classList.add('hidden'), 600);
@@ -717,8 +805,8 @@ async function boot() {
     player.pitch = -0.05;
     player.enabled = true;
     try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch {}
-    if (toTown && hunt) hunt.enter();
-    else if (hunt) {
+    const story = () => {
+      if (!hunt) return (player.enabled = true);
       // Story opening, told in the dialogue box over the festival street.
       player.enabled = false;
       ui.dialogue([
@@ -726,7 +814,13 @@ async function boot() {
         { name: 'Hana Matsuri', role: 'The Lost Festival Spirit', text: 'Tonight the bell has vanished from its cart in the Old Town — and as the sun sets, the lights are already beginning to dim.' },
         { name: 'Hana Matsuri', role: 'The Lost Festival Spirit', text: 'Enjoy the stalls and games, but find <b>Hanae</b>, the festival organizer, in the Old Town. The small torii on the game plaza leads there.' },
       ], () => (player.enabled = true));
-    }
+    };
+    if (toTown && hunt) hunt.enter();
+    // First visit (or replay requested in Settings): welcome card with Start / Skip Tutorial.
+    else if (!tutorialSeen() || forceTutorial) {
+      forceTutorial = false;
+      tutorial.welcome({ onSkip: story });
+    } else story();
   };
   const btn = document.getElementById('enter');
   btn.disabled = false;
@@ -755,7 +849,12 @@ async function boot() {
         page.querySelector('#set-perf').textContent = perfOn ? 'On' : 'Off';
         page.querySelector('#set-auto').textContent = autoTime ? 'On' : 'Off';
         page.querySelector('#set-diff').textContent = TUNING[G.difficulty].label;
+        page.querySelector('#set-music').value = Math.round(music.volume * 100);
+        page.querySelector('#set-music-pct').textContent = music.muted ? 'muted' : `${Math.round(music.volume * 100)}%`;
+        page.querySelector('#set-tut').textContent = forceTutorial ? 'Will play on start ✓' : 'Replay on start';
       };
+      page.querySelector('#set-music').oninput = (e) => (music.setVolume(e.target.value / 100), sync());
+      page.querySelector('#set-tut').onclick = () => ((forceTutorial = !forceTutorial), sync());
       page.querySelector('#set-diff').onclick = () => (cycleDifficulty(), sync());
       page.querySelector('#set-quality').onclick = () => (toggleQuality(), sync());
       page.querySelector('#set-perf').onclick = () => (togglePerf(), sync());
@@ -804,7 +903,7 @@ function frame() {
       world.tod = todTarget;
       todTarget = null;
     }
-  } else if (autoTime && started) {
+  } else if (autoTime && started && !G.tutorial) {
     world.tod = Math.min(1, world.tod + dt / 480); // golden hour -> night over ~4 minutes
   }
   todSlider.value = Math.round(world.tod * 1000);
@@ -843,6 +942,19 @@ function frame() {
   }
   if (!festivalPaused) finale?.update(dt, elapsed);
   fireworks.update(dt);
+  tutorial?.update(dt, elapsed);
+  // Music: area mood (cross-faded) and ducking under dialogue, panels and mini-games.
+  if (music.running) {
+    let mood = !started ? 'menu' : 'festival';
+    if (kimo?.courage?.running || realm?.active) mood = 'haunted';
+    else if (finale?.state === 'intro' || finale?.state === 'show') mood = 'finale';
+    else if (hunt?.area === 'town') mood = 'town';
+    let duck = 1;
+    if (activeGame === games.taiko) duck = 0; // the rhythm game has its own beat
+    else if (activeGame || hunt?.struggle) duck = 0.4;
+    else if (started && ui.panelOpen) duck = 0.55;
+    music.set(mood, duck);
+  }
 
   // Camera: tween, minigame pose, or first-person
   if (tween) {
@@ -867,6 +979,7 @@ function frame() {
     nearest = null;
     let best = 1e9;
     for (const it of world.interactables) {
+      if (G.tutorial && !it.tutorial) continue; // only the tutorial's own interactions during the tutorial
       if (!it.enabled()) continue;
       const d = Math.hypot(it.pos.x - player.pos.x, it.pos.z - player.pos.z);
       const score = it.priority ? d * 0.4 : d; // quest clues win over a bystander standing next to them
@@ -881,7 +994,7 @@ function frame() {
     ui.prompt(null);
   }
 
-  if (!G.done.explore && player.pos.x > 11) {
+  if (!G.done.explore && !G.tutorial && player.pos.x > 11) {
     markDone('explore');
     ui.toast('🏮 You reached the game plaza! Booths ahead, shrine to the east.');
   }

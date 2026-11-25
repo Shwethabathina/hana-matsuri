@@ -67,7 +67,13 @@ export class CursedBell extends CourageChallenge {
     this.ctx.ui.complete(
       `<div class="dlg-role">肝試し · Test of Courage</div><h2 class="fin">The Cursed Bell</h2>
        <p><b>Collect three seals → ring the shrine bell → escape the Rokurokubi.</b></p>
-       <p class="muted">Gold light beams and the map show where to go. <b>C</b> crouch · <b>Shift</b> run · <b>L</b> lantern · <b>E</b> interact / hide in reeds · <b>Q</b> throw pebble · <b>X</b> leave. No time limit — if caught you return to the last checkpoint.</p>`,
+       <ul class="intro">
+         <li><b>Objective</b> The panel at the top names the current goal; a <b style="color:#ff6a5a">red arrow</b>, the dotted route on the map and gold light beams lead to it. Press <b>E</b> at each seal and at the bell.</li>
+         <li><b>Lantern</b> <b>L</b> lights your hand lantern: it reveals sacred marks but burns oil and makes you easier to spot.</li>
+         <li><b>Hiding</b> Press <b>E</b> in tall reeds to hide. Spirits lose you unless they watch you go in. <b>C</b> crouch is quiet; <b>Shift</b> run is fast but loud.</li>
+         <li><b>Distractions</b> <b>Q</b> throws a pebble: spirits go to check the noise. <b>R</b> uses an ofuda ward to dim their senses for a moment.</li>
+         <li><b>Retry / exit</b> No time limit. If fear overwhelms you, you restart at the last checkpoint. <b>X</b> leaves the forest.</li>
+       </ul>`,
       [
         [`Easy${best('easy')}`, () => this.start('easy')],
         [`Normal${best('normal')}`, () => this.start('normal')],

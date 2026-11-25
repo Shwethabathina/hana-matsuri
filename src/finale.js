@@ -59,6 +59,26 @@ export class LanternFinale {
       this.ui.toast(`The festival spirit needs all five emblems. Still to earn: ${missing().map((e) => `${e.icon} ${e.name}`).join(', ')}`);
       return;
     }
+    if (!this.explained) {
+      // First time: a short explanation of what is about to happen.
+      this.explained = true;
+      const P = this.player;
+      P.enabled = false;
+      P.unlock();
+      this.ui.complete(
+        `<div class="dlg-role">灯籠流し · Tōrō nagashi</div><h2 class="fin">The Lantern Festival</h2>
+         <ul class="intro">
+           <li><b>Your lantern</b> When you begin, the camera follows as your paper lantern is set on the river (it is released for you).</li>
+           <li><b>The show</b> After a few seconds you can walk again: watch hundreds of lanterns drift downstream, sky lanterns rise and fireworks bloom over the water (about a minute).</li>
+           <li><b>Afterwards</b> Choose <b>Continue exploring</b> or <b>Restart</b>. Press <b>E</b> on the deck any time to replay it.</li>
+         </ul>`,
+        [
+          ['Begin the Lantern Festival', () => this.begin()],
+          ['Not yet', () => (P.enabled = true)],
+        ],
+      );
+      return;
+    }
     this.state = 'intro';
     this.river.start();
     this.onNight?.();

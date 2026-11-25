@@ -21,6 +21,9 @@ export function initAudio() {
   startAmbience();
 }
 
+// Shared context + master bus for other audio modules (the background music).
+export const audioCore = () => (ctx ? { ctx, master, noiseBuf } : null);
+
 export const audioTime = () => (ctx ? ctx.currentTime : performance.now() / 1000);
 
 function env(g, t, attack, peak, decay) {
