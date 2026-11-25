@@ -137,13 +137,13 @@ export const music = {
     const core = audioCore();
     if (!core) return;
     this.starting = true;
-    filesProbe.then((files) => {
+    filesProbe.then((set) => {
       this.starting = false;
       if (M || S) return;
-      if (files) {
+      if (set) {
         // Recorded soundtrack: linear gain (18 % slider = gentle background level), and the procedural
         // Test of Courage score is switched off so two soundtracks never play at once.
-        S = createSoundtrack(core.ctx, () => (settings.muted ? 0 : settings.volume));
+        S = createSoundtrack(core.ctx, () => (settings.muted ? 0 : settings.volume), set);
         setScoreEnabled(false);
         S.begin();
       } else build(core);

@@ -1,35 +1,54 @@
-// Recorded soundtrack (local-only): four music files the team keeps in /local-music on their own machine.
-// That folder is git-ignored and outside /public, so the files are never committed or deployed; on the
-// public site the probe below fails and the game keeps its original procedural score (music.js).
+// Recorded soundtrack, chosen at start-up from the first complete set of four files that loads:
+//   1. 'local'  — /local-music: the team's own copies of third-party recordings. Git-ignored and outside
+//                 /public, so they are never committed, built or deployed: they play only on that computer.
+//   2. 'public' — /music (public/music): the game's ORIGINAL soundtrack, rendered from our own score by
+//                 tools/music/render_soundtrack.py. Distributable; this is what the public website plays.
+// If neither set loads, music.js falls back to the live procedural score.
 //
 // One <audio> element + one MediaElementSource + one gain per track, created once and reused (no
 // duplicates, no leaks). Switching areas cross-fades over 2.5 s; the outgoing track is paused after its
 // fade so only one soundtrack is ever audible. Area tracks loop; the finale track restarts from 0:00
 // each time the Lantern Festival begins, plays to the end, then loops while the celebration continues.
-export const TRACKS = {
-  festival: 'local-music/festival.mp3',
-  town: 'local-music/town.mp3',
-  haunted: 'local-music/horror.mp3',
-  finale: 'local-music/finale.flac', // FLAC plays natively in Chrome, Edge, Firefox and Safari (lossless)
-};
+export const TRACK_SETS = [
+  {
+    id: 'local',
+    tracks: {
+      festival: 'local-music/festival.mp3',
+      town: 'local-music/town.mp3',
+      haunted: 'local-music/horror.mp3',
+      finale: 'local-music/finale.flac', // FLAC plays natively in Chrome, Edge, Firefox and Safari (lossless)
+    },
+  },
+  {
+    id: 'public',
+    tracks: { festival: 'music/festival.mp3', town: 'music/town.mp3', haunted: 'music/horror.mp3', finale: 'music/finale.mp3' },
+  },
+];
 const MOOD_TRACK = { festival: 'festival', menu: 'festival', town: 'town', haunted: 'haunted', finale: 'finale', silent: null };
 const FADE = 2.5;
 
+const exists = (u) =>
+  fetch(u, { method: 'HEAD', cache: 'no-store' })
+    .then((r) => r.ok && !/text\/html/i.test(r.headers.get('content-type') || ''))
+    .catch(() => false);
+
+// Resolves to the first complete track set ({ id, tracks }) or null.
 let probed = null;
 export function probeSoundtrack() {
   if (!probed) {
-    probed = Promise.all(
-      Object.values(TRACKS).map((u) =>
-        fetch(u, { method: 'HEAD', cache: 'no-store' })
-          .then((r) => r.ok && !/text\/html/i.test(r.headers.get('content-type') || ''))
-          .catch(() => false),
-      ),
-    ).then((oks) => oks.every(Boolean));
+    probed = (async () => {
+      for (const set of TRACK_SETS) {
+        const oks = await Promise.all(Object.values(set.tracks).map(exists));
+        if (oks.every(Boolean)) return set;
+      }
+      return null;
+    })();
   }
   return probed;
 }
 
-export function createSoundtrack(ctx, getLevel) {
+export function createSoundtrack(ctx, getLevel, set) {
+  const TRACKS = set.tracks;
   const bus = ctx.createGain(); // user volume x mute x ducking
   bus.gain.value = getLevel();
   bus.connect(ctx.destination); // straight to the output: the SFX compressor never pumps the music
@@ -146,7 +165,7 @@ export function createSoundtrack(ctx, getLevel) {
       for (const v of buf) s += v * v;
       const r = (x) => Math.round(x * 1000) / 1000;
       return {
-        mode: 'files', mood, duck, current: current?.name ?? null, bus: r(bus.gain.value), rms: r(Math.sqrt(s / buf.length)),
+        mode: 'files', set: set.id, mood, duck, current: current?.name ?? null, bus: r(bus.gain.value), rms: r(Math.sqrt(s / buf.length)),
         playing: Object.values(T).filter((t) => !t.el.paused).map((t) => t.name),
         tracks: Object.fromEntries(Object.values(T).map((t) => [t.name, { time: r(t.el.currentTime), gain: r(t.g.gain.value), paused: t.el.paused, playedOnce: t.playedOnce, ready: t.el.readyState, error: t.error }])),
       };
